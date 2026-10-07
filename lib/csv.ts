@@ -2,7 +2,7 @@
 // generato dall'agente (Fase 1). Colonne attese (l'ordine non conta, le
 // intestazioni sono confrontate senza maiuscole/accenti):
 //   Id, Nome, Cognome, Tipo Utente, Idoneo Prenotazione VDI
-// Facoltative: "Livello Atteso" e "Livello Affrontato" (0-MAX_LEVEL). Se
+// Facoltative: "Livello Atteso" e "Livello Affrontato" (0-MAX_LEVEL, anche testuali). Se
 // "Idoneo" manca ma ci sono i livelli, l'idoneita' e' max(atteso, affrontato) >= 2.
 //
 // Tollerante verso gli export di Excel: BOM UTF-8, separatore "," / ";" /
@@ -42,17 +42,59 @@ function detectDelimiter(headerLine: string): string {
   return counts[0][1] > 0 ? counts[0][0] : ",";
 }
 
+/** Riconosce le intestazioni dei livelli in modo flessibile (es. "Livello aspettativa", "Liv. Affrontato"). */
+function levelColumnKind(h: string): "atteso" | "affrontato" | null {
+  const hasLevel = /liv/.test(h) || /^(atteso|aspettat|affrontat|svolt|raggiunt)/.test(h);
+  if (!hasLevel) return null;
+  if (/(attes|aspett|target|obiett|previst|richiest|desider)/.test(h)) return "atteso";
+  if (/(affront|svolt|compl|raggiunt|attual|corrent|acquisit|frequent|fatt)/.test(h)) return "affrontato";
+  return null;
+}
+
+/** Converte il valore di una cella in livello: numero ("2", "Livello 2", "L2") o testo descrittivo. */
+function parseLevelValue(raw: string): number | null {
+  const v = normalize(raw);
+  if (!v || /^(-|--|n\/?a|nd|nessuno|nessuna|no|null)$/.test(v)) return null;
+  const digits = v.match(/[0-9]+/);
+  if (digits) return Number(digits[0]);
+  if (/(end.?to.?end|e2e|produzione|uat|rilascio|requisiti)/.test(v)) return 3;
+  if (/(tool|applicativ|sviluppo|app\b)/.test(v)) return 2;
+  if (/(prompt|base|basic|quotidian|iniziale|principiante)/.test(v)) return 1;
+  return Number.NaN;
+}
+
+export type CsvReport = {
+  rows: ParticipantRow[];
+  /** intestazioni riconosciute per le colonne dei livelli (null = non trovata) */
+  columns: { atteso: string | null; affrontato: string | null; idoneo: string | null };
+  /** quante righe hanno un valore in ciascuna colonna dei livelli */
+  filled: { atteso: number; affrontato: number };
+  /** tutte le intestazioni presenti nel file, per diagnosi */
+  headers: string[];
+};
+
 export function parseParticipantsCsv(content: string): ParticipantRow[] {
+  return parseParticipantsCsvDetailed(content).rows;
+}
+
+export function parseParticipantsCsvDetailed(content: string): CsvReport {
   const lines = content
-    .replace(/^﻿/, "")
+    .replace(/^\uFEFF/, "")
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 
-  if (lines.length === 0) return [];
+  const empty: CsvReport = {
+    rows: [],
+    columns: { atteso: null, affrontato: null, idoneo: null },
+    filled: { atteso: 0, affrontato: 0 },
+    headers: [],
+  };
+  if (lines.length === 0) return empty;
 
   const delimiter = detectDelimiter(lines[0]);
-  const header = splitCsvLine(lines[0], delimiter).map(normalize);
+  const rawHeaders = splitCsvLine(lines[0], delimiter).map((h) => h.trim());
+  const header = rawHeaders.map(normalize);
   const find = (...names: string[]) => header.findIndex((h) => names.includes(h));
   const idx = {
     id: find("id"),
@@ -60,8 +102,8 @@ export function parseParticipantsCsv(content: string): ParticipantRow[] {
     cognome: find("cognome"),
     tipo: find("tipo utente"),
     idoneo: find("idoneo prenotazione vdi", "idoneo"),
-    atteso: find("livello atteso", "livello aspettativa", "livello aspettato"),
-    affrontato: find("livello affrontato", "livello svolto"),
+    atteso: header.findIndex((h) => levelColumnKind(h) === "atteso"),
+    affrontato: header.findIndex((h) => levelColumnKind(h) === "affrontato"),
   };
 
   const hasLevels = idx.atteso !== -1 || idx.affrontato !== -1;
@@ -71,12 +113,13 @@ export function parseParticipantsCsv(content: string): ParticipantRow[] {
   if (missing.length > 0) {
     throw new Error(
       `Colonne mancanti nel CSV: ${missing.map(([k]) => k).join(", ")}. ` +
-        "Verifica di aver esportato il foglio DB_Partecipanti senza modificare le intestazioni."
+        `Intestazioni trovate: ${rawHeaders.join(" | ")}.`
     );
   }
 
+  const filled = { atteso: 0, affrontato: 0 };
   const seenIds = new Set<number>();
-  return lines.slice(1).map((line, i) => {
+  const rows = lines.slice(1).map((line, i) => {
     const lineNo = i + 2;
     const cols = splitCsvLine(line, delimiter);
     const sourceId = Number((cols[idx.id] ?? "").trim());
@@ -91,15 +134,18 @@ export function parseParticipantsCsv(content: string): ParticipantRow[] {
     const level = (col: number, what: string): number | null => {
       if (col === -1) return null;
       const raw = (cols[col] ?? "").trim();
-      if (!raw) return null;
-      const n = Number(raw.replace(/[^0-9]/g, ""));
+      const n = parseLevelValue(raw);
+      if (n === null) return null;
       if (!Number.isInteger(n) || n < 0 || n > MAX_LEVEL) {
-        throw new Error(`Riga ${lineNo}: ${what} non valido (0-${MAX_LEVEL}).`);
+        throw new Error(`Riga ${lineNo}: ${what} "${raw}" non valido (valori ammessi 0-${MAX_LEVEL}).`);
       }
       return n;
     };
-    const atteso = level(idx.atteso, "Livello Atteso");
+    const atteso0 = level(idx.atteso, "Livello Atteso");
+    const atteso = atteso0 === 0 ? null : atteso0; // 0 = nessuna aspettativa
     const affrontato = level(idx.affrontato, "Livello Affrontato");
+    if (atteso !== null) filled.atteso += 1;
+    if (affrontato !== null) filled.affrontato += 1;
     const idoneo =
       idx.idoneo !== -1 ? parseYes(cols[idx.idoneo] ?? "") : Math.max(atteso ?? 0, affrontato ?? 0) >= 2;
 
@@ -107,12 +153,23 @@ export function parseParticipantsCsv(content: string): ParticipantRow[] {
       sourceId,
       nome,
       cognome,
-      tipoUtente: normalize(cols[idx.tipo] ?? "") === "tmi" ? "TMI" : "External",
+      tipoUtente: normalize(cols[idx.tipo] ?? "") === "tmi" ? ("TMI" as const) : ("External" as const),
       idoneo,
       livelloAtteso: idx.atteso === -1 ? undefined : atteso,
       livelloAffrontato: idx.affrontato === -1 ? undefined : (affrontato ?? 0),
     };
   });
+
+  return {
+    rows,
+    columns: {
+      atteso: idx.atteso === -1 ? null : rawHeaders[idx.atteso],
+      affrontato: idx.affrontato === -1 ? null : rawHeaders[idx.affrontato],
+      idoneo: idx.idoneo === -1 ? null : rawHeaders[idx.idoneo],
+    },
+    filled,
+    headers: rawHeaders,
+  };
 }
 
 /** Split di una riga CSV con supporto minimo per valori tra virgolette. */

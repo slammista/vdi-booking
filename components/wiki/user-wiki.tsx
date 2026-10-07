@@ -1,5 +1,5 @@
 import { BOOKING_HORIZON_END } from "@/lib/slots";
-import { MAX_LEVEL } from "@/lib/levels";
+import { LEVELS } from "@/lib/levels";
 import { OWNERS } from "@/lib/config";
 import { Bullets, Note, Steps, WikiSection } from "./wiki";
 
@@ -58,10 +58,17 @@ export function UserWiki() {
             la <strong>prossima lezione</strong> (giorno, orario, livello), evidenziata anche in alto in ogni pagina;
           </li>
           <li>
-            il tuo <strong>percorso a livelli</strong> (1–{MAX_LEVEL}): per ogni livello se è <em>svolto</em>,{" "}
-            <em>programmato</em>, il <em>prossimo step</em> o ancora da fare;
+            il tuo <strong>percorso a livelli</strong>: per ogni livello se è <em>svolto</em>, <em>programmato</em>, il{" "}
+            <em>prossimo step</em> o ancora da fare;
           </li>
           <li>lo storico delle lezioni a cui hai partecipato.</li>
+        </Bullets>
+        <Bullets>
+          {LEVELS.map((l) => (
+            <li key={l.level}>
+              <strong>Livello {l.level}</strong> – {l.description}
+            </li>
+          ))}
         </Bullets>
         <Note>
           Il livello a cui puntare (&quot;atteso&quot;) e i livelli già svolti derivano dai dati del gruppo. Gli admin

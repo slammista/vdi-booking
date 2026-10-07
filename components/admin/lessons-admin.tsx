@@ -9,7 +9,7 @@ import { Modal } from "@/components/ui/modal";
 import { CalendarToolbar } from "@/components/calendar/toolbar";
 import { MonthView, WeekView, YearView, type CalEvent, type YearTone } from "@/components/calendar/views";
 import { isBookableDay } from "@/lib/holidays";
-import { MAX_LEVEL, pickRecommended } from "@/lib/levels";
+import { LEVELS, levelDescription, pickRecommended } from "@/lib/levels";
 import { BOOKING_HORIZON_END, DAY_END_HOUR, DAY_START_HOUR, romeDateString } from "@/lib/slots";
 import {
   addDays,
@@ -380,13 +380,14 @@ function LessonDialog({
             }}
             className="h-10 rounded-md border border-border bg-background px-3 text-sm"
           >
-            {Array.from({ length: MAX_LEVEL }, (_, i) => i + 1).map((l) => (
-              <option key={l} value={l}>
-                Livello {l}
+            {LEVELS.map((l) => (
+              <option key={l.level} value={l.level}>
+                Livello {l.level} · {l.title}
               </option>
             ))}
           </select>
           <p className="text-xs text-muted-foreground">
+            {levelDescription(draft.level)}.{" "}
             {levelTouched
               ? "Livello scelto a mano."
               : "Impostato in automatico in base ai partecipanti selezionati (il più consigliato)."}

@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { longDate, romeTime } from "@/lib/calendar";
 import { romeDateString } from "@/lib/slots";
 import { cn } from "@/lib/utils";
-import type { Progress } from "@/lib/levels";
+import { levelDescription, levelTitle, type Progress } from "@/lib/levels";
 
 export type MyLesson = {
   id: number;
@@ -118,11 +118,16 @@ function ProgressCard({ progress }: { progress: Progress }) {
       </CardHeader>
       {steps.length > 0 && (
         <CardContent>
-          <ol className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          <ol className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             {steps.map((st) => (
-              <li key={st.level} className={cn("flex flex-col gap-0.5 rounded-md border px-3 py-2", STEP_STYLE[st.status])}>
+              <li
+                key={st.level}
+                title={levelDescription(st.level)}
+                className={cn("flex flex-col gap-0.5 rounded-md border px-3 py-2", STEP_STYLE[st.status])}
+              >
                 <span className="text-xs uppercase tracking-wide opacity-80">Livello {st.level}</span>
-                <span className="text-sm font-semibold">{STEP_LABEL[st.status]}</span>
+                <span className="text-sm font-semibold">{levelTitle(st.level)}</span>
+                <span className="text-xs opacity-90">{STEP_LABEL[st.status]}</span>
                 {st.date && (
                   <span className="text-xs opacity-90">
                     {new Intl.DateTimeFormat("it-IT", { day: "2-digit", month: "short", year: "numeric", timeZone: "Europe/Rome" }).format(new Date(st.date))}
@@ -131,6 +136,13 @@ function ProgressCard({ progress }: { progress: Progress }) {
               </li>
             ))}
           </ol>
+          <ul className="mt-3 flex flex-col gap-1 text-xs text-muted-foreground">
+            {steps.map((st) => (
+              <li key={st.level}>
+                <strong className="text-foreground">Livello {st.level}</strong>: {levelDescription(st.level)}
+              </li>
+            ))}
+          </ul>
         </CardContent>
       )}
     </Card>

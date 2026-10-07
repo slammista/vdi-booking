@@ -1,5 +1,5 @@
 import { BOOKING_HORIZON_END } from "@/lib/slots";
-import { MAX_LEVEL } from "@/lib/levels";
+import { LEVELS, MAX_LEVEL } from "@/lib/levels";
 import { OWNERS } from "@/lib/config";
 import { Bullets, Code, Note, Steps, WikiSection } from "./wiki";
 
@@ -21,10 +21,24 @@ export function AdminWiki() {
             <Code>Idoneo Prenotazione VDI</Code>: <Code>Si</Code>/<Code>Sì</Code> abilita, qualsiasi altro valore no.
           </li>
           <li>
-            Facoltative: <Code>Livello Atteso</Code> e <Code>Livello Affrontato</Code> (numeri 0–{MAX_LEVEL}). Se
+            Facoltative: <Code>Livello Atteso</Code> e <Code>Livello Affrontato</Code> (numeri 0–{MAX_LEVEL}; 0 o vuoto =
+            nessuno). Sono riconosciute anche varianti come &quot;Livello aspettativa&quot; o &quot;Livello svolto&quot;. Se
             presenti e manca la colonna Idoneo, l&apos;idoneità è calcolata come{" "}
             <strong>max(atteso, affrontato) ≥ 2</strong>.
           </li>
+          <li>
+            Al termine dell&apos;import il riquadro <strong>&quot;Colonne lette dal file&quot;</strong> mostra quali
+            intestazioni sono state riconosciute e quanti valori sono stati letti: se compare &quot;non trovata&quot;,
+            rinomina la colonna e ricarica il file.
+          </li>
+        </Bullets>
+        <p>I livelli del percorso sono tre:</p>
+        <Bullets>
+          {LEVELS.map((l) => (
+            <li key={l.level}>
+              <strong>Livello {l.level}</strong> – {l.description}
+            </li>
+          ))}
         </Bullets>
         <Note>
           Se una colonna dei livelli è assente dal CSV, i valori già nel sistema non vengono toccati. Chi non è più nel

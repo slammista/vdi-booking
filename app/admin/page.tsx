@@ -150,6 +150,40 @@ export default function AdminPage() {
                 <strong>{importResult.updatedCount}</strong> · Nuovi:{" "}
                 <strong>{importResult.created?.length ?? 0}</strong>
               </p>
+              {importResult.detected && (
+                <div className="mt-2 rounded-md border border-border bg-card p-2 text-xs">
+                  <p className="font-medium">Colonne lette dal file</p>
+                  <p>
+                    Livello atteso:{" "}
+                    {importResult.detected.columns.atteso ? (
+                      <>
+                        <strong>&quot;{importResult.detected.columns.atteso}&quot;</strong> ({importResult.detected.filled.atteso}{" "}
+                        valori su {importResult.totalRows})
+                      </>
+                    ) : (
+                      <strong className="text-accent">non trovata</strong>
+                    )}
+                  </p>
+                  <p>
+                    Livello affrontato:{" "}
+                    {importResult.detected.columns.affrontato ? (
+                      <>
+                        <strong>&quot;{importResult.detected.columns.affrontato}&quot;</strong> (
+                        {importResult.detected.filled.affrontato} valori su {importResult.totalRows})
+                      </>
+                    ) : (
+                      <strong className="text-accent">non trovata</strong>
+                    )}
+                  </p>
+                  {(!importResult.detected.columns.atteso || !importResult.detected.columns.affrontato) && (
+                    <p className="mt-1 text-muted-foreground">
+                      Intestazioni presenti nel file: {importResult.detected.headers.join(" | ")}. Rinomina le colonne dei
+                      livelli in &quot;Livello Atteso&quot; / &quot;Livello Affrontato&quot; e ricarica il file.
+                    </p>
+                  )}
+                </div>
+              )}
+              {importResult.error && <p className="mt-2 text-accent">{importResult.error}</p>}
               {importResult.created?.length > 0 && (
                 <div className="mt-2 flex flex-col gap-1">
                   <p className="font-medium">Credenziali per i nuovi partecipanti (comunicale manualmente):</p>

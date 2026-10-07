@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pool, query } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-guard";
-import { parseParticipantsCsv } from "@/lib/csv";
+import { parseParticipantsCsvDetailed } from "@/lib/csv";
 import { buildUsername, generateTemporaryPassword, hashPassword } from "@/lib/auth";
 import { encryptPassword } from "@/lib/vault";
 
@@ -30,8 +30,10 @@ export async function POST(req: NextRequest) {
 
   const content = await (file as File).text();
   let rows;
+  let report;
   try {
-    rows = parseParticipantsCsv(content);
+    report = parseParticipantsCsvDetailed(content);
+    rows = report.rows;
   } catch (e: any) {
     return NextResponse.json({ error: e.message ?? "CSV non valido." }, { status: 400 });
   }
@@ -117,5 +119,7 @@ export async function POST(req: NextRequest) {
     totalRows: rows.length,
     created,
     updatedCount: updatedIds.length,
+    // cosa e' stato effettivamente letto dal file (per verificare le colonne dei livelli)
+    detected: { columns: report.columns, filled: report.filled, headers: report.headers },
   });
 }

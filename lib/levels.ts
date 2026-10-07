@@ -2,8 +2,25 @@
 // gia' affrontato importato dall'Excel (1..affrontato) oppure da una lezione
 // conclusa a cui la persona ha partecipato (non segnata assente).
 
-/** Numero massimo di livelli del percorso (modificare qui se cambia). */
-export const MAX_LEVEL = 5;
+/** Livelli del percorso formativo (titolo breve + descrizione). */
+export const LEVELS = [
+  { level: 1, title: "Prompt engineering base", description: "Prompt engineering base per task quotidiani" },
+  { level: 2, title: "Piccolo tool / applicativo", description: "Sviluppo di un piccolo tool/applicativo" },
+  {
+    level: 3,
+    title: "Applicativo end-to-end",
+    description:
+      "Sviluppo end-to-end di un applicativo: analisi dei requisiti, sviluppo e rilascio in ambiente test, UAT e poi produzione",
+  },
+] as const;
+
+/** Numero massimo di livelli del percorso. */
+export const MAX_LEVEL = LEVELS.length;
+
+export const levelTitle = (level: number) => LEVELS.find((l) => l.level === level)?.title ?? `Livello ${level}`;
+export const levelDescription = (level: number) => LEVELS.find((l) => l.level === level)?.description ?? "";
+/** Es. "Livello 2 · Piccolo tool / applicativo" */
+export const levelLabel = (level: number) => `Livello ${level} · ${levelTitle(level)}`;
 
 export type LessonRef = {
   lessonId: number;
