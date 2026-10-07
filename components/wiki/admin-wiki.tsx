@@ -8,28 +8,32 @@ export function AdminWiki() {
   return (
     <div className="flex flex-col gap-3">
       <WikiSection title="Importare i partecipanti (CSV)" defaultOpen>
-        <p>
-          Esporta il foglio <Code>DB_Partecipanti</Code> in CSV (UTF-8; separatore <Code>,</Code> o <Code>;</Code>) e
-          caricalo in <strong>Partecipanti → Sincronizza</strong>.
-        </p>
+        <Steps>
+          <li>
+            Dal report Excel genera il CSV con lo script del repository:{" "}
+            <Code>python scripts/extract_participants.py AI_LAB_Report_Manageriale_AAAA-MM-GG.xlsx</Code> (serve{" "}
+            <Code>pip install openpyxl</Code>). Lo script legge <Code>Dati_Persone</Code> (nome, cognome, tipo utente,
+            aspettativa) e <Code>Stato_Partecipanti</Code> (livello attuale) e scrive{" "}
+            <Code>partecipanti_AAAA-MM-GG.csv</Code>.
+          </li>
+          <li>
+            In <strong>Partecipanti → Sincronizza</strong> carica quel CSV.
+          </li>
+          <li>
+            Controlla il riquadro <strong>&quot;Colonne lette dal file&quot;</strong>: mostra quali colonne dei livelli
+            sono state riconosciute e quanti valori sono stati letti.
+          </li>
+        </Steps>
         <Bullets>
           <li>
-            Colonne obbligatorie: <Code>Id</Code>, <Code>Nome</Code>, <Code>Cognome</Code>, <Code>Tipo Utente</Code>{" "}
-            (TMI / External).
+            Colonne del CSV: <Code>Id</Code>, <Code>Nome</Code>, <Code>Cognome</Code>, <Code>Tipo Utente</Code> (TMI /
+            External), <Code>Livello Atteso</Code>, <Code>Livello Svolto</Code> (0–{MAX_LEVEL}; vuoto o 0 = nessuno).
           </li>
           <li>
-            <Code>Idoneo Prenotazione VDI</Code>: <Code>Si</Code>/<Code>Sì</Code> abilita, qualsiasi altro valore no.
+            <strong>Non esiste un&apos;idoneità separata</strong>: chi è presente nel file ha accesso all&apos;app.
           </li>
           <li>
-            Facoltative: <Code>Livello Atteso</Code> e <Code>Livello Affrontato</Code> (numeri 0–{MAX_LEVEL}; 0 o vuoto =
-            nessuno). Sono riconosciute anche varianti come &quot;Livello aspettativa&quot; o &quot;Livello svolto&quot;. Se
-            presenti e manca la colonna Idoneo, l&apos;idoneità è calcolata come{" "}
-            <strong>max(atteso, affrontato) ≥ 2</strong>.
-          </li>
-          <li>
-            Al termine dell&apos;import il riquadro <strong>&quot;Colonne lette dal file&quot;</strong> mostra quali
-            intestazioni sono state riconosciute e quanti valori sono stati letti: se compare &quot;non trovata&quot;,
-            rinomina la colonna e ricarica il file.
+            Il file <strong>non va committato</strong> nel repository: contiene dati personali.
           </li>
         </Bullets>
         <p>I livelli del percorso sono tre:</p>
@@ -41,8 +45,8 @@ export function AdminWiki() {
           ))}
         </Bullets>
         <Note>
-          Se una colonna dei livelli è assente dal CSV, i valori già nel sistema non vengono toccati. Chi non è più nel
-          file viene disattivato, non cancellato.
+          Chi non è più nel file viene disattivato (non cancellato, per preservare lo storico). Una colonna dei livelli
+          assente dal CSV lascia invariati i valori già presenti.
         </Note>
       </WikiSection>
 
@@ -76,7 +80,7 @@ export function AdminWiki() {
         <p>Per ogni partecipante il sistema calcola il percorso a livelli:</p>
         <Bullets>
           <li>
-            <strong>Svolti</strong>: livelli da 1 a <em>Livello Affrontato</em> (dal file) più le lezioni concluse a cui
+            <strong>Svolti</strong>: livelli da 1 a <em>Livello Svolto</em> (dal file) più le lezioni concluse a cui
             ha partecipato.
           </li>
           <li>

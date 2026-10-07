@@ -132,7 +132,7 @@ export function HistoryDialog({
         <div className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
             Livello atteso: <strong className="text-foreground">{data.progress.atteso ?? "—"}</strong> · Livello
-            affrontato (dal file): <strong className="text-foreground">{data.progress.affrontato}</strong> · Prossimo:{" "}
+            svolto (dal file): <strong className="text-foreground">{data.progress.affrontato}</strong> · Prossimo:{" "}
             <strong className="text-foreground">{data.progress.next ?? "completato"}</strong>
           </p>
 

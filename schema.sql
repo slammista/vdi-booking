@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS participants (
     cognome             TEXT NOT NULL,
     username            TEXT NOT NULL UNIQUE,           -- es. mario.rossi (generato, univoco)
     tipo_utente         TEXT NOT NULL CHECK (tipo_utente IN ('TMI', 'External')),
-    idoneo_prenotazione BOOLEAN NOT NULL DEFAULT TRUE,
+    idoneo_prenotazione BOOLEAN NOT NULL DEFAULT TRUE,   -- DEPRECATO: non piu' usato (presenza nel file = accesso)
     password_hash       TEXT NOT NULL,                  -- bcrypt, MAI testo in chiaro
     must_reset_password BOOLEAN NOT NULL DEFAULT TRUE,  -- forza il cambio al primo accesso
     is_active           BOOLEAN NOT NULL DEFAULT TRUE,  -- false se rimosso in un sync successivo

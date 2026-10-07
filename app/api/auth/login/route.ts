@@ -22,10 +22,9 @@ export async function POST(req: NextRequest) {
     username: string;
     password_hash: string;
     is_active: boolean;
-    idoneo_prenotazione: boolean;
     must_reset_password: boolean;
   }>(
-    `SELECT id, nome, cognome, username, password_hash, is_active, idoneo_prenotazione, must_reset_password
+    `SELECT id, nome, cognome, username, password_hash, is_active, must_reset_password
      FROM participants WHERE username = $1`,
     [username.toLowerCase()]
   );
@@ -38,13 +37,6 @@ export async function POST(req: NextRequest) {
 
   const ok = await verifyPassword(password, participant.password_hash);
   if (!ok) return genericError;
-
-  if (!participant.idoneo_prenotazione) {
-    return NextResponse.json(
-      { error: "Il tuo profilo non risulta al momento idoneo alla prenotazione VDI. Contatta l'amministratore." },
-      { status: 403 }
-    );
-  }
 
   const token = await createSessionToken({
     participantId: participant.id,

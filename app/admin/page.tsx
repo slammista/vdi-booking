@@ -18,7 +18,6 @@ type Participant = {
   cognome: string;
   username: string;
   tipo_utente: "TMI" | "External";
-  idoneo_prenotazione: boolean;
   is_active: boolean;
   must_reset_password: boolean;
   has_password: boolean;
@@ -37,6 +36,7 @@ export default function AdminPage() {
   const [busy, setBusy] = React.useState(false);
   const [tab, setTab] = React.useState<"people" | "lessons" | "guide">("people");
   const [historyFor, setHistoryFor] = React.useState<number | null>(null);
+  const [filter, setFilter] = React.useState("");
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const load = React.useCallback(async () => {
@@ -87,6 +87,10 @@ export default function AdminPage() {
     }
   }
 
+  const visible = (participants ?? []).filter((p) =>
+    `${p.nome} ${p.cognome} ${p.username}`.toLowerCase().includes(filter.trim().toLowerCase())
+  );
+
   return (
     <>
       <AppHeader
@@ -130,8 +134,10 @@ export default function AdminPage() {
             <Upload className="h-4 w-4" /> Sincronizza partecipanti
           </CardTitle>
           <CardDescription>
-            Carica il CSV esportato dal foglio <code>DB_Partecipanti</code> del report
-            (AI_LAB_Report_Manageriale_*.xlsx, generato automaticamente dall&apos;agente).
+            Genera il CSV dal report Excel con{" "}
+            <code>python scripts/extract_participants.py AI_LAB_Report_Manageriale_*.xlsx</code> (colonne: Id, Nome,
+            Cognome, Tipo Utente, Livello Atteso, Livello Svolto) e caricalo qui. Chi è presente nel file ha accesso
+            all&apos;app.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
@@ -165,7 +171,7 @@ export default function AdminPage() {
                     )}
                   </p>
                   <p>
-                    Livello affrontato:{" "}
+                    Livello svolto:{" "}
                     {importResult.detected.columns.affrontato ? (
                       <>
                         <strong>&quot;{importResult.detected.columns.affrontato}&quot;</strong> (
@@ -177,8 +183,8 @@ export default function AdminPage() {
                   </p>
                   {(!importResult.detected.columns.atteso || !importResult.detected.columns.affrontato) && (
                     <p className="mt-1 text-muted-foreground">
-                      Intestazioni presenti nel file: {importResult.detected.headers.join(" | ")}. Rinomina le colonne dei
-                      livelli in &quot;Livello Atteso&quot; / &quot;Livello Affrontato&quot; e ricarica il file.
+                      Intestazioni presenti nel file: {importResult.detected.headers.join(" | ")}. Usa lo script
+                      scripts/extract_participants.py per generare il CSV nel formato corretto.
                     </p>
                   )}
                 </div>
@@ -223,56 +229,67 @@ export default function AdminPage() {
             <p className="text-sm text-muted-foreground">Caricamento...</p>
           ) : (
             <div className="overflow-x-auto">
+              <input
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Cerca per nome, cognome o utente…"
+                className="mb-3 h-9 w-full max-w-xs rounded-md border border-border bg-background px-3 text-sm"
+              />
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-left text-muted-foreground">
                     <th className="py-2 pr-3">Nome</th>
-                    <th className="py-2 pr-3">Utente</th>
+                    <th className="py-2 pr-3">Cognome</th>
                     <th className="py-2 pr-3">Tipo</th>
-                    <th className="py-2 pr-3">Livelli</th>
+                    <th className="py-2 pr-3">Livello atteso</th>
+                    <th className="py-2 pr-3">Livello svolto</th>
+                    <th className="py-2 pr-3">Utente</th>
                     <th className="py-2 pr-3">Stato</th>
                     <th className="py-2 pr-3">Password</th>
                     <th className="py-2 pr-3"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {participants.map((p) => (
-                    <tr key={p.id} className="border-b border-border/60">
-                      <td className="py-2 pr-3">
-                        {p.nome} {p.cognome}
-                      </td>
-                      <td className="py-2 pr-3 font-mono text-xs">{p.username}</td>
-                      <td className="py-2 pr-3">{p.tipo_utente}</td>
-                      <td className="py-2 pr-3 text-xs">
-                        <div>
-                          atteso <strong>{p.livello_atteso ?? "—"}</strong> · svolti{" "}
-                          <strong>{p.done.length ? p.done.join(",") : "—"}</strong>
-                        </div>
-                        <div className="text-muted-foreground">
-                          prossimo {p.next ?? "—"} · consigliato {p.recommended ?? "—"}
-                        </div>
-                      </td>
-                      <td className="py-2 pr-3 flex flex-wrap gap-1">
-                        {!p.is_active && <Badge variant="muted">Non più attivo</Badge>}
-                        {p.is_active && !p.idoneo_prenotazione && <Badge variant="destructive">Non idoneo</Badge>}
-                        {p.is_active && p.idoneo_prenotazione && <Badge variant="success">Attivo</Badge>}
-                        {p.must_reset_password && <Badge variant="muted">Da reimpostare</Badge>}
-                      </td>
-                      <td className="py-2 pr-3">
-                        <PasswordCell participantId={p.id} available={p.has_password} />
-                      </td>
-                      <td className="py-2 pr-3">
-                        <div className="flex flex-wrap gap-1.5">
-                          <Button variant="outline" size="sm" disabled={busy} onClick={() => handleReset(p)}>
-                            <KeyRound className="h-3.5 w-3.5" /> Reset password
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => setHistoryFor(p.id)}>
-                            Storico
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {visible.map((p) => {
+                    const svolto = p.done.length ? Math.max(...p.done) : 0;
+                    return (
+                      <tr key={p.id} className="border-b border-border/60">
+                        <td className="py-2 pr-3">{p.nome}</td>
+                        <td className="py-2 pr-3 font-medium">{p.cognome}</td>
+                        <td className="py-2 pr-3">{p.tipo_utente}</td>
+                        <td className="py-2 pr-3">{p.livello_atteso ?? "—"}</td>
+                        <td className="py-2 pr-3">
+                          <div>{svolto || "—"}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {p.next === null && p.livello_atteso !== null
+                              ? "obiettivo raggiunto"
+                              : `prossimo ${p.next ?? "—"}${p.recommended !== p.next ? ` · consigliato ${p.recommended ?? "—"}` : ""}`}
+                          </div>
+                        </td>
+                        <td className="py-2 pr-3 font-mono text-xs">{p.username}</td>
+                        <td className="py-2 pr-3">
+                          <div className="flex flex-wrap gap-1">
+                            {!p.is_active && <Badge variant="muted">Non più nel file</Badge>}
+                            {p.is_active && <Badge variant="success">Attivo</Badge>}
+                            {p.must_reset_password && <Badge variant="muted">Da reimpostare</Badge>}
+                          </div>
+                        </td>
+                        <td className="py-2 pr-3">
+                          <PasswordCell participantId={p.id} available={p.has_password} />
+                        </td>
+                        <td className="py-2 pr-3">
+                          <div className="flex flex-wrap gap-1.5">
+                            <Button variant="outline" size="sm" disabled={busy} onClick={() => handleReset(p)}>
+                              <KeyRound className="h-3.5 w-3.5" /> Reset password
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => setHistoryFor(p.id)}>
+                              Storico
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

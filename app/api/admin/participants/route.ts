@@ -7,7 +7,7 @@ export async function GET() {
   if (!(await requireAdmin())) return NextResponse.json({ error: "Non autorizzato." }, { status: 401 });
 
   const rows = await query<any>(
-    `SELECT id, source_id, nome, cognome, username, tipo_utente, idoneo_prenotazione,
+    `SELECT id, source_id, nome, cognome, username, tipo_utente,
             is_active, must_reset_password, updated_at, livello_atteso, livello_affrontato,
             (password_enc IS NOT NULL) AS has_password
      FROM participants ORDER BY cognome, nome`

@@ -41,10 +41,6 @@ export function LoginWiki() {
       <WikiSection title="Non riesco ad accedere">
         <Bullets>
           <li>Controlla di aver scritto il nome utente tutto in minuscolo e nel formato nome.cognome.</li>
-          <li>
-            Se compare &quot;profilo non idoneo alla prenotazione&quot;, il tuo profilo non è ancora abilitato: contatta
-            gli owner.
-          </li>
           <li>Se il problema persiste, scrivi a uno degli owner indicando il tuo nome utente.</li>
         </Bullets>
       </WikiSection>

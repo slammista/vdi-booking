@@ -1,20 +1,16 @@
-// Parser per il CSV esportato dal foglio "DB_Partecipanti" del report Excel
-// generato dall'agente (Fase 1). Colonne attese (l'ordine non conta, le
-// intestazioni sono confrontate senza maiuscole/accenti):
-//   Id, Nome, Cognome, Tipo Utente, Idoneo Prenotazione VDI
-// Facoltative: "Livello Atteso" e "Livello Affrontato" (0-MAX_LEVEL, anche testuali). Se
-// "Idoneo" manca ma ci sono i livelli, l'idoneita' e' max(atteso, affrontato) >= 2.
-//
-// Tollerante verso gli export di Excel: BOM UTF-8, separatore "," / ";" /
-// tab, e per "Idoneo" accetta si/sì/s/yes/y/true/vero/1/x (anche se
-// l'accento e' stato rovinato da una codifica non UTF-8).
+// Parser per il CSV dei partecipanti, generato da scripts/extract_participants.py
+// a partire dal report Excel. Colonne attese (l'ordine non conta; le intestazioni
+// sono confrontate senza maiuscole/accenti):
+//   Id, Nome, Cognome, Tipo Utente, Livello Atteso, Livello Svolto
+// Le due colonne dei livelli sono facoltative. Sono accettati anche gli alias
+// inglesi (externalId, firstName, lastName, userType, expectedLevel, currentLevel).
+// Non esiste idoneita': chi e' nel file ha accesso all'app.
 
 export type ParticipantRow = {
   sourceId: number;
   nome: string;
   cognome: string;
   tipoUtente: "TMI" | "External";
-  idoneo: boolean;
   /** undefined = colonna assente nel CSV (non toccare il valore nel DB) */
   livelloAtteso?: number | null;
   livelloAffrontato?: number;
@@ -30,12 +26,6 @@ function normalize(s: string): string {
     .toLowerCase();
 }
 
-/** Valori "vero". Il carattere U+FFFD copre una "ì" rovinata dalla codifica. */
-function parseYes(raw: string): boolean {
-  const v = normalize(raw);
-  return /^(s|si|s�|y|yes|true|vero|x|ok|1)$/.test(v);
-}
-
 function detectDelimiter(headerLine: string): string {
   const counts = [",", ";", "\t"].map((d) => [d, headerLine.split(d).length - 1] as const);
   counts.sort((a, b) => b[1] - a[1]);
@@ -44,17 +34,17 @@ function detectDelimiter(headerLine: string): string {
 
 /** Riconosce le intestazioni dei livelli in modo flessibile (es. "Livello aspettativa", "Liv. Affrontato"). */
 function levelColumnKind(h: string): "atteso" | "affrontato" | null {
-  const hasLevel = /liv/.test(h) || /^(atteso|aspettat|affrontat|svolt|raggiunt)/.test(h);
+  const hasLevel = /liv|level/.test(h) || /^(atteso|aspettat|affrontat|svolt|raggiunt)/.test(h);
   if (!hasLevel) return null;
-  if (/(attes|aspett|target|obiett|previst|richiest|desider)/.test(h)) return "atteso";
-  if (/(affront|svolt|compl|raggiunt|attual|corrent|acquisit|frequent|fatt)/.test(h)) return "affrontato";
+  if (/(attes|aspett|expect|target|obiett|previst|richiest|desider)/.test(h)) return "atteso";
+  if (/(affront|svolt|compl|raggiunt|attual|current|corrent|acquisit|frequent|fatt)/.test(h)) return "affrontato";
   return null;
 }
 
 /** Converte il valore di una cella in livello: numero ("2", "Livello 2", "L2") o testo descrittivo. */
 function parseLevelValue(raw: string): number | null {
   const v = normalize(raw);
-  if (!v || /^(-|--|n\/?a|nd|nessuno|nessuna|no|null)$/.test(v)) return null;
+  if (!v || /^([-–—_.]+|n\/?a|nd|nessuno|nessuna|no|null)$/.test(v)) return null; // "—" = nessun livello
   const digits = v.match(/[0-9]+/);
   if (digits) return Number(digits[0]);
   if (/(end.?to.?end|e2e|produzione|uat|rilascio|requisiti)/.test(v)) return 3;
@@ -66,7 +56,7 @@ function parseLevelValue(raw: string): number | null {
 export type CsvReport = {
   rows: ParticipantRow[];
   /** intestazioni riconosciute per le colonne dei livelli (null = non trovata) */
-  columns: { atteso: string | null; affrontato: string | null; idoneo: string | null };
+  columns: { atteso: string | null; affrontato: string | null };
   /** quante righe hanno un valore in ciascuna colonna dei livelli */
   filled: { atteso: number; affrontato: number };
   /** tutte le intestazioni presenti nel file, per diagnosi */
@@ -86,7 +76,7 @@ export function parseParticipantsCsvDetailed(content: string): CsvReport {
 
   const empty: CsvReport = {
     rows: [],
-    columns: { atteso: null, affrontato: null, idoneo: null },
+    columns: { atteso: null, affrontato: null },
     filled: { atteso: 0, affrontato: 0 },
     headers: [],
   };
@@ -97,18 +87,15 @@ export function parseParticipantsCsvDetailed(content: string): CsvReport {
   const header = rawHeaders.map(normalize);
   const find = (...names: string[]) => header.findIndex((h) => names.includes(h));
   const idx = {
-    id: find("id"),
-    nome: find("nome"),
-    cognome: find("cognome"),
-    tipo: find("tipo utente"),
-    idoneo: find("idoneo prenotazione vdi", "idoneo"),
+    id: find("id", "externalid", "external id", "source id", "sourceid"),
+    nome: find("nome", "firstname", "first name"),
+    cognome: find("cognome", "lastname", "last name"),
+    tipo: find("tipo utente", "tipo", "usertype", "user type"),
     atteso: header.findIndex((h) => levelColumnKind(h) === "atteso"),
     affrontato: header.findIndex((h) => levelColumnKind(h) === "affrontato"),
   };
 
-  const hasLevels = idx.atteso !== -1 || idx.affrontato !== -1;
   const required: Record<string, number> = { id: idx.id, nome: idx.nome, cognome: idx.cognome, tipo: idx.tipo };
-  if (idx.idoneo === -1 && !hasLevels) required["idoneo"] = -1;
   const missing = Object.entries(required).filter(([, v]) => v === -1);
   if (missing.length > 0) {
     throw new Error(
@@ -146,15 +133,12 @@ export function parseParticipantsCsvDetailed(content: string): CsvReport {
     const affrontato = level(idx.affrontato, "Livello Affrontato");
     if (atteso !== null) filled.atteso += 1;
     if (affrontato !== null) filled.affrontato += 1;
-    const idoneo =
-      idx.idoneo !== -1 ? parseYes(cols[idx.idoneo] ?? "") : Math.max(atteso ?? 0, affrontato ?? 0) >= 2;
 
     return {
       sourceId,
       nome,
       cognome,
       tipoUtente: normalize(cols[idx.tipo] ?? "") === "tmi" ? ("TMI" as const) : ("External" as const),
-      idoneo,
       livelloAtteso: idx.atteso === -1 ? undefined : atteso,
       livelloAffrontato: idx.affrontato === -1 ? undefined : (affrontato ?? 0),
     };
@@ -165,7 +149,6 @@ export function parseParticipantsCsvDetailed(content: string): CsvReport {
     columns: {
       atteso: idx.atteso === -1 ? null : rawHeaders[idx.atteso],
       affrontato: idx.affrontato === -1 ? null : rawHeaders[idx.affrontato],
-      idoneo: idx.idoneo === -1 ? null : rawHeaders[idx.idoneo],
     },
     filled,
     headers: rawHeaders,

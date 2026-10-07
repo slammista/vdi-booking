@@ -12,12 +12,13 @@ import { encryptPassword } from "@/lib/vault";
  * participants:
  *  - nuove persone -> creato username + password temporanea (mostrata UNA
  *    SOLA VOLTA nella risposta, da comunicare manualmente fuori dall'app)
- *  - persone esistenti (stesso source_id) -> aggiornati nome/cognome/tipo/idoneita'
+ *  - persone esistenti (stesso source_id) -> aggiornati nome/cognome/tipo/livelli
  *  - persone non piu' presenti nel CSV -> is_active = false (non cancellate,
  *    per preservare lo storico delle prenotazioni passate)
  *
  * Nessun dato aziendale viene mai letto o scritto: il CSV contiene solo
- * Id, Nome, Cognome, Tipo Utente, Idoneo Prenotazione VDI.
+ * Id, Nome, Cognome, Tipo Utente e (facoltativi) i livelli atteso/svolto.
+ * Essere presenti nel file significa avere accesso: non esiste un flag di idoneita'.
  */
 export async function POST(req: NextRequest) {
   if (!(await requireAdmin())) return NextResponse.json({ error: "Non autorizzato." }, { status: 401 });
@@ -61,13 +62,13 @@ export async function POST(req: NextRequest) {
         // I livelli si aggiornano solo se le colonne sono presenti nel CSV.
         await client.query(
           `UPDATE participants
-           SET nome = $1, cognome = $2, tipo_utente = $3, idoneo_prenotazione = $4,
-               livello_atteso = CASE WHEN $6 THEN $7::smallint ELSE livello_atteso END,
-               livello_affrontato = CASE WHEN $8 THEN $9::smallint ELSE livello_affrontato END,
+           SET nome = $1, cognome = $2, tipo_utente = $3,
+               livello_atteso = CASE WHEN $5 THEN $6::smallint ELSE livello_atteso END,
+               livello_affrontato = CASE WHEN $7 THEN $8::smallint ELSE livello_affrontato END,
                is_active = true, updated_at = now()
-           WHERE id = $5`,
+           WHERE id = $4`,
           [
-            row.nome, row.cognome, row.tipoUtente, row.idoneo, existingId,
+            row.nome, row.cognome, row.tipoUtente, existingId,
             row.livelloAtteso !== undefined, row.livelloAtteso ?? null,
             row.livelloAffrontato !== undefined, row.livelloAffrontato ?? 0,
           ]
@@ -80,12 +81,12 @@ export async function POST(req: NextRequest) {
 
         await client.query(
           `INSERT INTO participants
-             (source_id, nome, cognome, username, tipo_utente, idoneo_prenotazione,
+             (source_id, nome, cognome, username, tipo_utente,
               password_hash, password_enc, must_reset_password, is_active,
               livello_atteso, livello_affrontato)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, true, $9, $10)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, true, true, $8, $9)`,
           [
-            row.sourceId, row.nome, row.cognome, username, row.tipoUtente, row.idoneo,
+            row.sourceId, row.nome, row.cognome, username, row.tipoUtente,
             passwordHash, encryptPassword(tempPassword),
             row.livelloAtteso ?? null, row.livelloAffrontato ?? 0,
           ]

@@ -5,3 +5,7 @@ next-env.d.ts
 .env*
 !.env.example
 .vercel/
+
+# dati personali (export partecipanti / report Excel)
+*.csv
+*.xlsx
