@@ -24,10 +24,20 @@ function createPool() {
   });
 }
 
-export const pool = globalThis.__pgPool ?? createPool();
-if (process.env.NODE_ENV !== "production") {
-  globalThis.__pgPool = pool;
+// Creazione lazy: il modulo viene importato anche durante `next build`
+// (page data collection), quando DATABASE_URL puo' non essere disponibile.
+function getPool(): Pool {
+  if (!globalThis.__pgPool) globalThis.__pgPool = createPool();
+  return globalThis.__pgPool;
 }
+
+export const pool = new Proxy({} as Pool, {
+  get(_t, prop) {
+    const p = getPool();
+    const v = (p as any)[prop];
+    return typeof v === "function" ? v.bind(p) : v;
+  },
+});
 
 export async function query<T = any>(text: string, params?: any[]): Promise<T[]> {
   const result = await pool.query(text, params);
