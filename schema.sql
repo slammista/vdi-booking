@@ -4,13 +4,13 @@
 -- username generato (non email) e una password personale (hashata).
 -- ============================================================================
 
-CREATE EXTENSION IF NOT EXISTS btree_gist;
+CREATE EXTENSION IF NOT EXISTS btree_gist;  -- su Supabase: valuta 'WITH SCHEMA extensions'
 
 -- ---------------------------------------------------------------------------
 -- Partecipanti (sincronizzati dal foglio DB_Partecipanti del report Excel,
 -- tramite upload manuale del CSV dalla pagina /admin)
 -- ---------------------------------------------------------------------------
-CREATE TABLE participants (
+CREATE TABLE IF NOT EXISTS participants (
     id                  SERIAL PRIMARY KEY,
     source_id           INTEGER NOT NULL,              -- ID dal foglio Persone
     nome                TEXT NOT NULL,
@@ -25,12 +25,12 @@ CREATE TABLE participants (
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX idx_participants_source_id ON participants(source_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_participants_source_id ON participants(source_id);
 
 -- ---------------------------------------------------------------------------
 -- Risorse VDI (oggi una sola, ma predisposto per espansione)
 -- ---------------------------------------------------------------------------
-CREATE TABLE vdi_resources (
+CREATE TABLE IF NOT EXISTS vdi_resources (
     id        SERIAL PRIMARY KEY,
     code      TEXT NOT NULL UNIQUE,   -- es. 'VDI-AI-01'
     label     TEXT NOT NULL,
@@ -40,7 +40,7 @@ CREATE TABLE vdi_resources (
 -- ---------------------------------------------------------------------------
 -- Prenotazioni
 -- ---------------------------------------------------------------------------
-CREATE TABLE bookings (
+CREATE TABLE IF NOT EXISTS bookings (
     id             SERIAL PRIMARY KEY,
     participant_id INTEGER NOT NULL REFERENCES participants(id),
     resource_id    INTEGER NOT NULL REFERENCES vdi_resources(id),
@@ -59,8 +59,17 @@ CREATE TABLE bookings (
     ) WHERE (stato = 'Confermata')
 );
 
-CREATE INDEX idx_bookings_participant ON bookings(participant_id);
-CREATE INDEX idx_bookings_slot ON bookings USING gist (slot);
+CREATE INDEX IF NOT EXISTS idx_bookings_participant ON bookings(participant_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_slot ON bookings USING gist (slot);
+
+-- ---------------------------------------------------------------------------
+-- Sicurezza: l'app accede con la connection string Postgres (ruolo che
+-- bypassa l'RLS). Abilitare l'RLS senza policy chiude invece l'accesso dalla
+-- Data API pubblica di Supabase (anon key).
+-- ---------------------------------------------------------------------------
+ALTER TABLE participants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vdi_resources ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
 
 -- ---------------------------------------------------------------------------
 -- Dati iniziali

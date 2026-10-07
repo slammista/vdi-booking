@@ -1,3 +1,4 @@
+import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import { isBookableDay } from "./holidays";
 
 export const SLOT_DURATION_MINUTES = 60;
@@ -11,52 +12,60 @@ export type Slot = {
   label: string; // es. "09:00 - 10:00"
 };
 
+/** Data (YYYY-MM-DD) di un istante, espressa nel fuso Europe/Rome. */
+export function romeDateString(d: Date): string {
+  return formatInTimeZone(d, TIMEZONE, "yyyy-MM-dd");
+}
+
+/** true se la stringa e' una data di calendario valida nel formato YYYY-MM-DD. */
+export function isValidDateString(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, d] = s.split("-").map(Number);
+  const probe = new Date(Date.UTC(y, m - 1, d));
+  return probe.getUTCFullYear() === y && probe.getUTCMonth() === m - 1 && probe.getUTCDate() === d;
+}
+
+function addDays(dateStr: string, n: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+/** Istanti UTC di inizio/fine della giornata di calendario in Europe/Rome. */
+export function dayBounds(dateStr: string): { start: Date; end: Date } {
+  return {
+    start: fromZonedTime(`${dateStr}T00:00:00`, TIMEZONE),
+    end: fromZonedTime(`${addDays(dateStr, 1)}T00:00:00`, TIMEZONE),
+  };
+}
+
+function atRomeTime(dateStr: string, minutesFromMidnight: number): Date {
+  const hh = String(Math.floor(minutesFromMidnight / 60)).padStart(2, "0");
+  const mm = String(minutesFromMidnight % 60).padStart(2, "0");
+  return fromZonedTime(`${dateStr}T${hh}:${mm}:00`, TIMEZONE);
+}
+
 /**
- * Genera tutti gli slot prenotabili di una giornata (09:00-18:00, passo di
- * SLOT_DURATION_MINUTES). Se il giorno non e' prenotabile (weekend o
+ * Genera tutti gli slot prenotabili di una giornata (09:00-18:00 ora di
+ * Roma, passo di SLOT_DURATION_MINUTES). `dateStr` e' una data di calendario
+ * YYYY-MM-DD interpretata in Europe/Rome, indipendentemente dal fuso del
+ * server (su Vercel e' UTC). Se il giorno non e' prenotabile (weekend o
  * festivita'), ritorna un array vuoto.
- *
- * Nota: le date vengono costruite usando l'ora locale del runtime. In
- * produzione su Vercel, imposta la variabile d'ambiente TZ=Europe/Rome
- * (vedi .env.example) cosi' che i calcoli coincidano con il fuso richiesto
- * anche se la funzione serverless gira fisicamente altrove.
  */
-export function generateDaySlots(day: Date): Slot[] {
-  if (!isBookableDay(day)) return [];
+export function generateDaySlots(dateStr: string): Slot[] {
+  if (!isValidDateString(dateStr) || !isBookableDay(dateStr)) return [];
 
   const slots: Slot[] = [];
-  const totalMinutes = (DAY_END_HOUR - DAY_START_HOUR) * 60;
-  const count = Math.floor(totalMinutes / SLOT_DURATION_MINUTES);
+  const count = Math.floor(((DAY_END_HOUR - DAY_START_HOUR) * 60) / SLOT_DURATION_MINUTES);
 
   for (let i = 0; i < count; i++) {
-    const start = new Date(day);
-    start.setHours(DAY_START_HOUR, 0, 0, 0);
-    start.setMinutes(start.getMinutes() + i * SLOT_DURATION_MINUTES);
-
-    const end = new Date(start);
-    end.setMinutes(end.getMinutes() + SLOT_DURATION_MINUTES);
-
+    const startMin = DAY_START_HOUR * 60 + i * SLOT_DURATION_MINUTES;
+    const start = atRomeTime(dateStr, startMin);
+    const end = atRomeTime(dateStr, startMin + SLOT_DURATION_MINUTES);
     slots.push({
       start,
       end,
-      label: `${fmtTime(start)} - ${fmtTime(end)}`,
+      label: `${formatInTimeZone(start, TIMEZONE, "HH:mm")} - ${formatInTimeZone(end, TIMEZONE, "HH:mm")}`,
     });
   }
   return slots;
-}
-
-function fmtTime(d: Date): string {
-  return d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
-}
-
-/** Ritorna i prossimi N giorni lavorativi (bookable) a partire da oggi incluso. */
-export function nextBookableDays(count: number, from: Date = new Date()): Date[] {
-  const days: Date[] = [];
-  const cursor = new Date(from);
-  cursor.setHours(0, 0, 0, 0);
-  while (days.length < count) {
-    if (isBookableDay(cursor)) days.push(new Date(cursor));
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return days;
 }

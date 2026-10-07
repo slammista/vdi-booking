@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { query, queryOne } from "@/lib/db";
 import { getCurrentSession } from "@/lib/session";
-import { generateDaySlots } from "@/lib/slots";
+import { dayBounds, generateDaySlots, isValidDateString, romeDateString } from "@/lib/slots";
 
 /**
  * GET /api/bookings?date=YYYY-MM-DD
@@ -16,12 +16,11 @@ export async function GET(req: NextRequest) {
   const dateParam = req.nextUrl.searchParams.get("date");
   if (!dateParam) return NextResponse.json({ error: "Parametro 'date' mancante." }, { status: 400 });
 
-  const day = new Date(`${dateParam}T00:00:00`);
-  if (Number.isNaN(day.getTime())) {
+  if (!isValidDateString(dateParam)) {
     return NextResponse.json({ error: "Data non valida." }, { status: 400 });
   }
 
-  const slots = generateDaySlots(day);
+  const slots = generateDaySlots(dateParam);
 
   const resource = await queryOne<{ id: number }>(
     `SELECT id FROM vdi_resources WHERE code = $1 AND is_active = true`,
@@ -31,9 +30,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Risorsa VDI non configurata." }, { status: 500 });
   }
 
-  const dayStart = new Date(day);
-  const dayEnd = new Date(day);
-  dayEnd.setDate(dayEnd.getDate() + 1);
+  const { start: dayStart, end: dayEnd } = dayBounds(dateParam);
 
   const existing = await query<{
     id: number;
@@ -95,7 +92,10 @@ export async function POST(req: NextRequest) {
 
   // Validazione lato server delle regole di business (oltre a quelle di UI):
   // mai fidarsi solo del client per orari/giorni ammessi.
-  const slotsOfDay = generateDaySlots(startDate);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return NextResponse.json({ error: "Richiesta non valida." }, { status: 400 });
+  }
+  const slotsOfDay = generateDaySlots(romeDateString(startDate));
   const matchesKnownSlot = slotsOfDay.some(
     (s) => s.start.getTime() === startDate.getTime() && s.end.getTime() === endDate.getTime()
   );

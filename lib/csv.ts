@@ -1,7 +1,11 @@
-// Parser minimale per il CSV esportato dal foglio "DB_Partecipanti" del
-// report Excel generato dall'agente (Fase 1). Formato atteso (intestazioni
-// in italiano, coerenti con l'export da Excel):
-//   Id,Nome,Cognome,Tipo Utente,Idoneo Prenotazione VDI
+// Parser per il CSV esportato dal foglio "DB_Partecipanti" del report Excel
+// generato dall'agente (Fase 1). Colonne attese (l'ordine non conta, le
+// intestazioni sono confrontate senza maiuscole/accenti):
+//   Id, Nome, Cognome, Tipo Utente, Idoneo Prenotazione VDI
+//
+// Tollerante verso gli export di Excel: BOM UTF-8, separatore "," / ";" /
+// tab, e per "Idoneo" accetta si/sì/s/yes/y/true/vero/1/x (anche se
+// l'accento e' stato rovinato da una codifica non UTF-8).
 
 export type ParticipantRow = {
   sourceId: number;
@@ -11,21 +15,44 @@ export type ParticipantRow = {
   idoneo: boolean;
 };
 
+function normalize(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+/** Valori "vero". Il carattere U+FFFD copre una "ì" rovinata dalla codifica. */
+function parseYes(raw: string): boolean {
+  const v = normalize(raw);
+  return /^(s|si|s�|y|yes|true|vero|x|ok|1)$/.test(v);
+}
+
+function detectDelimiter(headerLine: string): string {
+  const counts = [",", ";", "\t"].map((d) => [d, headerLine.split(d).length - 1] as const);
+  counts.sort((a, b) => b[1] - a[1]);
+  return counts[0][1] > 0 ? counts[0][0] : ",";
+}
+
 export function parseParticipantsCsv(content: string): ParticipantRow[] {
   const lines = content
+    .replace(/^﻿/, "")
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 
   if (lines.length === 0) return [];
 
-  const header = splitCsvLine(lines[0]).map((h) => h.trim().toLowerCase());
+  const delimiter = detectDelimiter(lines[0]);
+  const header = splitCsvLine(lines[0], delimiter).map(normalize);
+  const find = (...names: string[]) => header.findIndex((h) => names.includes(h));
   const idx = {
-    id: header.indexOf("id"),
-    nome: header.indexOf("nome"),
-    cognome: header.indexOf("cognome"),
-    tipo: header.indexOf("tipo utente"),
-    idoneo: header.indexOf("idoneo prenotazione vdi"),
+    id: find("id"),
+    nome: find("nome"),
+    cognome: find("cognome"),
+    tipo: find("tipo utente"),
+    idoneo: find("idoneo prenotazione vdi", "idoneo"),
   };
 
   const missing = Object.entries(idx).filter(([, v]) => v === -1);
@@ -36,21 +63,31 @@ export function parseParticipantsCsv(content: string): ParticipantRow[] {
     );
   }
 
-  return lines.slice(1).map((line) => {
-    const cols = splitCsvLine(line);
-    const tipoRaw = (cols[idx.tipo] ?? "").trim();
+  const seenIds = new Set<number>();
+  return lines.slice(1).map((line, i) => {
+    const lineNo = i + 2;
+    const cols = splitCsvLine(line, delimiter);
+    const sourceId = Number((cols[idx.id] ?? "").trim());
+    const nome = (cols[idx.nome] ?? "").trim();
+    const cognome = (cols[idx.cognome] ?? "").trim();
+
+    if (!Number.isInteger(sourceId)) throw new Error(`Riga ${lineNo}: Id non valido.`);
+    if (seenIds.has(sourceId)) throw new Error(`Riga ${lineNo}: Id ${sourceId} duplicato.`);
+    if (!nome || !cognome) throw new Error(`Riga ${lineNo}: Nome o Cognome mancante.`);
+    seenIds.add(sourceId);
+
     return {
-      sourceId: Number(cols[idx.id]),
-      nome: (cols[idx.nome] ?? "").trim(),
-      cognome: (cols[idx.cognome] ?? "").trim(),
-      tipoUtente: tipoRaw === "TMI" ? "TMI" : "External",
-      idoneo: /^s(i|ì)$/i.test((cols[idx.idoneo] ?? "").trim()),
+      sourceId,
+      nome,
+      cognome,
+      tipoUtente: normalize(cols[idx.tipo] ?? "") === "tmi" ? "TMI" : "External",
+      idoneo: parseYes(cols[idx.idoneo] ?? ""),
     };
   });
 }
 
 /** Split di una riga CSV con supporto minimo per valori tra virgolette. */
-function splitCsvLine(line: string): string[] {
+function splitCsvLine(line: string, delimiter: string): string[] {
   const result: string[] = [];
   let current = "";
   let inQuotes = false;
@@ -58,7 +95,7 @@ function splitCsvLine(line: string): string[] {
     const ch = line[i];
     if (ch === '"') {
       inQuotes = !inQuotes;
-    } else if (ch === "," && !inQuotes) {
+    } else if (ch === delimiter && !inQuotes) {
       result.push(current);
       current = "";
     } else {

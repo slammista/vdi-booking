@@ -53,11 +53,10 @@ export function getHolidaysForYear(year: number): Record<string, string> {
   return cache.get(year)!;
 }
 
-/** true se il giorno (Date in orario locale Europe/Rome) e' lun-ven e non festivo. */
-export function isBookableDay(d: Date): boolean {
-  const day = d.getDay(); // 0 = domenica, 6 = sabato (nel fuso locale del runtime)
-  if (day === 0 || day === 6) return false;
-  const holidays = getHolidaysForYear(d.getFullYear());
-  const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  return !holidays[key];
+/** true se la data di calendario (YYYY-MM-DD) e' lun-ven e non festiva. */
+export function isBookableDay(dateStr: string): boolean {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 = domenica, 6 = sabato
+  if (dow === 0 || dow === 6) return false;
+  return !getHolidaysForYear(y)[dateStr];
 }

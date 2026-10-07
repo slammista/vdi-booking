@@ -24,7 +24,8 @@ function buildNextDays(count: number): DayOption[] {
     const dow = cursor.getDay();
     if (dow !== 0 && dow !== 6) {
       days.push({
-        iso: cursor.toISOString().slice(0, 10),
+        // data di calendario locale (toISOString() la sposterebbe in UTC)
+        iso: `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`,
         label: cursor.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" }),
         weekday: cursor.toLocaleDateString("it-IT", { weekday: "short" }),
       });
