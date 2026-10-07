@@ -5,6 +5,8 @@ export const SLOT_DURATION_MINUTES = 60;
 export const DAY_START_HOUR = 9;
 export const DAY_END_HOUR = 18;
 export const TIMEZONE = "Europe/Rome";
+/** Ultimo giorno (incluso) in cui si puo' prenotare o programmare una lezione. */
+export const BOOKING_HORIZON_END = "2030-03-31";
 
 export type Slot = {
   start: Date;
@@ -25,7 +27,7 @@ export function isValidDateString(s: string): boolean {
   return probe.getUTCFullYear() === y && probe.getUTCMonth() === m - 1 && probe.getUTCDate() === d;
 }
 
-function addDays(dateStr: string, n: number): string {
+export function addDays(dateStr: string, n: number): string {
   const [y, m, d] = dateStr.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 }

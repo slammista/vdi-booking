@@ -5,6 +5,8 @@ import { Upload, KeyRound, RefreshCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { LessonsAdmin } from "@/components/admin/lessons-admin";
+import { cn } from "@/lib/utils";
 
 type Participant = {
   id: number;
@@ -23,6 +25,7 @@ export default function AdminPage() {
   const [importResult, setImportResult] = React.useState<any>(null);
   const [resetResult, setResetResult] = React.useState<{ name: string; password: string } | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const [tab, setTab] = React.useState<"people" | "lessons">("people");
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const load = React.useCallback(async () => {
@@ -78,9 +81,32 @@ export default function AdminPage() {
       <header>
         <h1 className="text-xl font-semibold">Pannello amministrativo · AI Lab VDI Booking</h1>
         <p className="text-sm text-muted-foreground">
-          Sincronizza i partecipanti dal report Excel e gestisci il reset delle password.
+          Sincronizza i partecipanti dal report Excel, gestisci le password e assegna le lezioni.
         </p>
       </header>
+
+      <nav className="flex gap-1 border-b border-border">
+        {([
+          ["people", "Partecipanti"],
+          ["lessons", "Lezioni"],
+        ] as const).map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setTab(id)}
+            className={cn(
+              "-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors",
+              tab === id ? "border-accent text-accent" : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {tab === "lessons" && <LessonsAdmin participants={participants ?? []} />}
+
+      {tab === "people" && (
+        <>
 
       <Card>
         <CardHeader>
@@ -184,6 +210,8 @@ export default function AdminPage() {
           )}
         </CardContent>
       </Card>
+        </>
+      )}
     </main>
   );
 }

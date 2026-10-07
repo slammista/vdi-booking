@@ -6,40 +6,17 @@ import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { LoginForm } from "@/components/booking/login-form";
 import { ChangePasswordForm } from "@/components/booking/change-password-form";
-import { WeekNavigator, type DayOption } from "@/components/booking/week-navigator";
-import { SlotGrid } from "@/components/booking/slot-grid";
+import { VdiCalendar } from "@/components/booking/vdi-calendar";
+import { LessonsPanel, NextLessonBanner, type MyLessons } from "@/components/booking/lessons-panel";
+import { cn } from "@/lib/utils";
 
 type Me = { authenticated: boolean; nome?: string; cognome?: string };
-
-function buildNextDays(count: number): DayOption[] {
-  // NB: per semplicità lato client si escludono qui solo i weekend; le
-  // festività italiane sono comunque applicate server-side (vedi
-  // lib/holidays.ts) sia nel calcolo degli slot sia nella validazione della
-  // prenotazione, quindi un giorno festivo infrasettimanale mostrerà
-  // semplicemente "nessuno slot disponibile" se selezionato.
-  const days: DayOption[] = [];
-  const cursor = new Date();
-  cursor.setHours(0, 0, 0, 0);
-  while (days.length < count) {
-    const dow = cursor.getDay();
-    if (dow !== 0 && dow !== 6) {
-      days.push({
-        // data di calendario locale (toISOString() la sposterebbe in UTC)
-        iso: `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`,
-        label: cursor.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" }),
-        weekday: cursor.toLocaleDateString("it-IT", { weekday: "short" }),
-      });
-    }
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return days;
-}
 
 export default function BookingPage() {
   const [me, setMe] = React.useState<Me | null>(null);
   const [mustReset, setMustReset] = React.useState(false);
-  const [days] = React.useState<DayOption[]>(() => buildNextDays(10));
-  const [selectedDay, setSelectedDay] = React.useState(days[0]?.iso ?? "");
+  const [tab, setTab] = React.useState<"vdi" | "lessons">("vdi");
+  const [lessons, setLessons] = React.useState<MyLessons | null>(null);
   const { theme, setTheme } = useTheme();
 
   const refreshMe = React.useCallback(async () => {
@@ -55,6 +32,15 @@ export default function BookingPage() {
   React.useEffect(() => {
     refreshMe();
   }, [refreshMe]);
+
+  const authenticated = me?.authenticated === true;
+  React.useEffect(() => {
+    if (!authenticated) return;
+    fetch("/api/lessons")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setLessons(d))
+      .catch(() => {});
+  }, [authenticated]);
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -87,7 +73,7 @@ export default function BookingPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-4xl flex-col gap-6 p-6">
+    <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-6 p-6">
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <MonitorSmartphone className="h-6 w-6 text-accent" />
@@ -113,10 +99,27 @@ export default function BookingPage() {
         </div>
       </header>
 
-      <section className="flex flex-col gap-3">
-        <WeekNavigator days={days} selected={selectedDay} onSelect={setSelectedDay} />
-        {selectedDay && <SlotGrid date={selectedDay} />}
-      </section>
+      <NextLessonBanner lessons={lessons} onOpen={() => setTab("lessons")} />
+
+      <nav className="flex gap-1 border-b border-border">
+        {([
+          ["vdi", "Prenota VDI"],
+          ["lessons", "Le mie lezioni"],
+        ] as const).map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setTab(id)}
+            className={cn(
+              "-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors",
+              tab === id ? "border-accent text-accent" : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      <section>{tab === "vdi" ? <VdiCalendar /> : <LessonsPanel lessons={lessons} />}</section>
     </main>
   );
 }

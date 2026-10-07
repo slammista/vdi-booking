@@ -76,3 +76,29 @@ ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
 -- ---------------------------------------------------------------------------
 INSERT INTO vdi_resources (code, label) VALUES ('VDI-AI-01', 'VDI AI Lab - Macchina 1')
 ON CONFLICT (code) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- Lezioni (assegnate dagli admin, indipendenti dalla prenotazione VDI).
+-- Una lezione puo' avere piu' partecipanti. Orari validati lato applicazione
+-- (lun-ven 09:00-18:00 Europe/Rome, festivi esclusi).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS lessons (
+    id         SERIAL PRIMARY KEY,
+    title      TEXT NOT NULL,
+    notes      TEXT,
+    slot       TSTZRANGE NOT NULL CHECK (NOT isempty(slot) AND lower(slot) IS NOT NULL AND upper(slot) IS NOT NULL),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS lesson_participants (
+    lesson_id      INTEGER NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+    participant_id INTEGER NOT NULL REFERENCES participants(id),
+    PRIMARY KEY (lesson_id, participant_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_lessons_slot ON lessons USING gist (slot);
+CREATE INDEX IF NOT EXISTS idx_lesson_participants_participant ON lesson_participants(participant_id);
+
+ALTER TABLE lessons ENABLE ROW LEVEL SECURITY;
+ALTER TABLE lesson_participants ENABLE ROW LEVEL SECURITY;
