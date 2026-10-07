@@ -1,8 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { queryOne } from "@/lib/db";
+import { query, queryOne } from "@/lib/db";
 import { getCurrentSession } from "@/lib/session";
-import { BOOKING_HORIZON_END, generateDaySlots, romeDateString } from "@/lib/slots";
+import { validateBookingSlot } from "@/lib/booking-rules";
+
+/** GET /api/bookings — prenotazioni future (non ancora concluse) dell'utente corrente. */
+export async function GET() {
+  const session = await getCurrentSession();
+  if (!session) return NextResponse.json({ error: "Non autenticato." }, { status: 401 });
+
+  const rows = await query<{ id: number; start: Date; end: Date }>(
+    `SELECT id, lower(slot) AS start, upper(slot) AS "end"
+     FROM bookings
+     WHERE participant_id = $1 AND stato = 'Confermata' AND upper(slot) > now()
+     ORDER BY lower(slot)`,
+    [session.participantId]
+  );
+  return NextResponse.json({ bookings: rows });
+}
 
 const createSchema = z.object({
   start: z.string(),
@@ -24,32 +39,10 @@ export async function POST(req: NextRequest) {
   const parsed = createSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Richiesta non valida." }, { status: 400 });
 
-  const { start, end, note } = parsed.data;
-  const startDate = new Date(start);
-  const endDate = new Date(end);
-
   // Validazione lato server delle regole di business (oltre a quelle di UI):
   // mai fidarsi solo del client per orari/giorni ammessi.
-  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-    return NextResponse.json({ error: "Richiesta non valida." }, { status: 400 });
-  }
-  if (startDate.getTime() <= Date.now()) {
-    return NextResponse.json({ error: "Non è possibile prenotare uno slot già iniziato o passato." }, { status: 400 });
-  }
-  const startDay = romeDateString(startDate);
-  if (startDay > BOOKING_HORIZON_END) {
-    return NextResponse.json({ error: "Le prenotazioni sono aperte fino al 31/03/2030." }, { status: 400 });
-  }
-  const slotsOfDay = generateDaySlots(startDay);
-  const matchesKnownSlot = slotsOfDay.some(
-    (s) => s.start.getTime() === startDate.getTime() && s.end.getTime() === endDate.getTime()
-  );
-  if (!matchesKnownSlot) {
-    return NextResponse.json(
-      { error: "Lo slot richiesto non rientra negli orari prenotabili (09:00-18:00, lun-ven, festività escluse)." },
-      { status: 400 }
-    );
-  }
+  const slot = validateBookingSlot(parsed.data.start, parsed.data.end);
+  if (!slot.ok) return NextResponse.json({ error: slot.error }, { status: 400 });
 
   const resource = await queryOne<{ id: number }>(
     `SELECT id FROM vdi_resources WHERE code = $1 AND is_active = true`,
@@ -62,7 +55,7 @@ export async function POST(req: NextRequest) {
       `INSERT INTO bookings (participant_id, resource_id, slot, note)
        VALUES ($1, $2, tstzrange($3, $4), $5)
        RETURNING id`,
-      [session.participantId, resource.id, startDate.toISOString(), endDate.toISOString(), note ?? null]
+      [session.participantId, resource.id, slot.start.toISOString(), slot.end.toISOString(), parsed.data.note ?? null]
     );
     return NextResponse.json({ ok: true, bookingId: inserted?.id }, { status: 201 });
   } catch (err: any) {

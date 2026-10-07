@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LessonsAdmin } from "@/components/admin/lessons-admin";
 import { cn } from "@/lib/utils";
+import { AppHeader } from "@/components/app-header";
 
 type Participant = {
   id: number;
@@ -77,14 +78,12 @@ export default function AdminPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-6 p-6">
-      <header>
-        <h1 className="text-xl font-semibold">Pannello amministrativo · AI Lab VDI Booking</h1>
-        <p className="text-sm text-muted-foreground">
-          Sincronizza i partecipanti dal report Excel, gestisci le password e assegna le lezioni.
-        </p>
-      </header>
-
+    <>
+      <AppHeader
+        title="Pannello amministrativo · AI Lab VDI Booking"
+        subtitle="Partecipanti, password e assegnazione lezioni"
+      />
+      <main className="mx-auto flex max-w-5xl flex-col gap-6 p-6">
       <nav className="flex gap-1 border-b border-border">
         {([
           ["people", "Partecipanti"],
@@ -212,6 +211,7 @@ export default function AdminPage() {
       </Card>
         </>
       )}
-    </main>
+      </main>
+    </>
   );
 }

@@ -1,8 +1,6 @@
 import type { Config } from "tailwindcss";
 
-// Tema personalizzato: NON il grigio/zinc di default di shadcn.
-// Palette "graphite + ember": antracite profondo in dark mode,
-// accento ambra/rosso caldo (non il solito blu/viola da "AI generic UI").
+// Tema: rosso / grigio / nero (vedi i token in app/globals.css).
 const config: Config = {
   darkMode: "class",
   content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],

@@ -17,9 +17,13 @@ import {
 } from "@/lib/calendar";
 
 type Booking = { id: number; start: string; end: string; mine: boolean };
+type Mine = { id: number; start: string; end: string };
+type Moving = { id: number; start: Date; end: Date };
 type Pending =
   | { kind: "book"; start: Date; end: Date }
-  | { kind: "cancel"; start: Date; end: Date; bookingId: number };
+  | { kind: "manage"; start: Date; end: Date; bookingId: number }
+  | { kind: "cancel"; start: Date; end: Date; bookingId: number }
+  | { kind: "move"; start: Date; end: Date; from: Moving };
 
 export function VdiCalendar() {
   const today = todayRome();
@@ -32,6 +36,8 @@ export function VdiCalendar() {
   const [pending, setPending] = React.useState<Pending | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [actionError, setActionError] = React.useState<string | null>(null);
+  const [moving, setMoving] = React.useState<Moving | null>(null);
+  const [mine, setMine] = React.useState<Mine[]>([]);
 
   const range = React.useMemo(() => periodRange(view, anchor), [view, anchor]);
 
@@ -51,6 +57,13 @@ export function VdiCalendar() {
       cancelled = true;
     };
   }, [range.from, range.to, reloadKey]);
+
+  React.useEffect(() => {
+    fetch("/api/bookings")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setMine(d.bookings))
+      .catch(() => {});
+  }, [reloadKey]);
 
   const now = Date.now();
   const takenByStart = React.useMemo(() => new Map(bookings.map((b) => [new Date(b.start).getTime(), b])), [bookings]);
@@ -84,7 +97,8 @@ export function VdiCalendar() {
       title: b.mine ? "Tua prenotazione" : "Occupato",
       subtitle: `${romeTime(start)} – ${romeTime(end)}`,
       tone: b.mine ? "mine" : "taken",
-      onClick: cancellable ? () => openPending({ kind: "cancel", start, end, bookingId: b.id }) : undefined,
+      onClick:
+        cancellable && !moving ? () => openPending({ kind: "manage", start, end, bookingId: b.id }) : undefined,
     };
   });
 
@@ -101,7 +115,12 @@ export function VdiCalendar() {
 
   function onCellClick(d: string, hour: number) {
     const slot = generateDaySlots(d)[hour - 9];
-    if (slot) openPending({ kind: "book", start: slot.start, end: slot.end });
+    if (!slot) return;
+    openPending(
+      moving
+        ? { kind: "move", start: slot.start, end: slot.end, from: moving }
+        : { kind: "book", start: slot.start, end: slot.end }
+    );
   }
 
   async function confirm() {
@@ -109,14 +128,15 @@ export function VdiCalendar() {
     setBusy(true);
     setActionError(null);
     try {
+      if (pending.kind === "manage") return;
+      const body = JSON.stringify({ start: pending.start.toISOString(), end: pending.end.toISOString() });
+      const json = { "Content-Type": "application/json" };
       const res =
         pending.kind === "book"
-          ? await fetch("/api/bookings", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ start: pending.start.toISOString(), end: pending.end.toISOString() }),
-            })
-          : await fetch(`/api/bookings/${pending.bookingId}`, { method: "DELETE" });
+          ? await fetch("/api/bookings", { method: "POST", headers: json, body })
+          : pending.kind === "move"
+            ? await fetch(`/api/bookings/${pending.from.id}`, { method: "PATCH", headers: json, body })
+            : await fetch(`/api/bookings/${pending.bookingId}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setActionError(data.error ?? "Operazione non riuscita.");
@@ -124,6 +144,7 @@ export function VdiCalendar() {
         return;
       }
       setPending(null);
+      if (pending.kind === "move") setMoving(null);
       setReloadKey((k) => k + 1);
     } finally {
       setBusy(false);
@@ -134,6 +155,82 @@ export function VdiCalendar() {
     setView("week");
     setAnchor(d);
   };
+
+  function PendingModal() {
+    if (!pending) return null;
+    const day = <strong className="first-letter:uppercase">{longDate(romeDateString(pending.start))}</strong>;
+    const time = (
+      <>
+        dalle <strong>{romeTime(pending.start)}</strong> alle <strong>{romeTime(pending.end)}</strong>
+      </>
+    );
+    const errorBox = actionError && (
+      <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        {actionError}
+      </div>
+    );
+
+    if (pending.kind === "manage") {
+      const { start, end, bookingId } = pending;
+      return (
+        <Modal title="La tua prenotazione" onClose={() => setPending(null)}>
+          <div className="flex flex-col gap-4">
+            <p className="text-sm">
+              VDI prenotata per {day} {time}.
+            </p>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button variant="outline" onClick={() => setPending(null)}>
+                Chiudi
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setMoving({ id: bookingId, start, end });
+                  setPending(null);
+                }}
+              >
+                Sposta
+              </Button>
+              <Button variant="destructive" onClick={() => setPending({ kind: "cancel", start, end, bookingId })}>
+                Annulla prenotazione
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      );
+    }
+
+    const title =
+      pending.kind === "book" ? "Conferma prenotazione" : pending.kind === "move" ? "Conferma spostamento" : "Annulla prenotazione";
+    return (
+      <Modal title={title} onClose={() => !busy && setPending(null)}>
+        <div className="flex flex-col gap-4">
+          <p className="text-sm">
+            {pending.kind === "book" && <>Vuoi prenotare la VDI per {day} {time}?</>}
+            {pending.kind === "cancel" && <>Vuoi annullare la tua prenotazione per {day} {time}?</>}
+            {pending.kind === "move" && (
+              <>
+                Vuoi spostare la prenotazione di{" "}
+                <strong>
+                  {longDate(romeDateString(pending.from.start))} {romeTime(pending.from.start)}–{romeTime(pending.from.end)}
+                </strong>{" "}
+                a {day} {time}?
+              </>
+            )}
+          </p>
+          {errorBox}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setPending(null)} disabled={busy}>
+              Indietro
+            </Button>
+            <Button onClick={confirm} disabled={busy} variant={pending.kind === "cancel" ? "destructive" : "default"}>
+              {pending.kind === "book" ? "Prenota" : pending.kind === "move" ? "Sposta" : "Annulla prenotazione"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -149,6 +246,18 @@ export function VdiCalendar() {
           setAnchor(clampStr(a, today, BOOKING_HORIZON_END));
         }}
       />
+
+      {moving && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-sm">
+          <span>
+            Stai spostando la prenotazione di <strong>{longDate(romeDateString(moving.start))}</strong>{" "}
+            {romeTime(moving.start)}–{romeTime(moving.end)}. Clicca un nuovo slot libero.
+          </span>
+          <Button size="sm" variant="outline" onClick={() => setMoving(null)}>
+            Annulla spostamento
+          </Button>
+        </div>
+      )}
 
       {loadError && (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -220,37 +329,18 @@ export function VdiCalendar() {
 
       <Legend view={view} />
 
-      {pending && (
-        <Modal
-          title={pending.kind === "book" ? "Conferma prenotazione" : "Annulla prenotazione"}
-          onClose={() => !busy && setPending(null)}
-        >
-          <div className="flex flex-col gap-4">
-            <p className="text-sm">
-              {pending.kind === "book" ? "Vuoi prenotare la VDI" : "Vuoi annullare la tua prenotazione"} per{" "}
-              <strong className="first-letter:uppercase">{longDate(romeDateString(pending.start))}</strong> dalle{" "}
-              <strong>{romeTime(pending.start)}</strong> alle <strong>{romeTime(pending.end)}</strong>?
-            </p>
-            {actionError && (
-              <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {actionError}
-              </div>
-            )}
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setPending(null)} disabled={busy}>
-                Indietro
-              </Button>
-              <Button
-                onClick={confirm}
-                disabled={busy}
-                variant={pending.kind === "cancel" ? "destructive" : "default"}
-              >
-                {pending.kind === "book" ? "Prenota" : "Annulla prenotazione"}
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
+      {PendingModal()}
+
+      <MyBookings
+        items={mine}
+        moving={moving}
+        onMove={(m) => {
+          setMoving(m);
+          setView("week");
+          setAnchor(clampStr(romeDateString(m.start), today, BOOKING_HORIZON_END));
+        }}
+        onCancel={(m) => openPending({ kind: "cancel", start: m.start, end: m.end, bookingId: m.id })}
+      />
     </div>
   );
 }
@@ -260,8 +350,8 @@ function Legend({ view }: { view: CalView }) {
     view === "year"
       ? [
           ["bg-accent", "Hai una prenotazione"],
-          ["bg-accent/20", "Alcuni slot occupati"],
-          ["bg-muted-foreground/30", "Giornata completa"],
+          ["bg-muted-foreground/20", "Alcuni slot occupati"],
+          ["bg-foreground/60", "Giornata completa"],
         ]
       : [
           ["bg-accent/15 border border-accent", "Tua prenotazione"],
@@ -277,5 +367,49 @@ function Legend({ view }: { view: CalView }) {
       ))}
       <span>Prenotabile fino al 31/03/2030 · lun-ven 09:00-18:00 · ogni slot è esclusivo</span>
     </div>
+  );
+}
+
+function MyBookings({
+  items,
+  moving,
+  onMove,
+  onCancel,
+}: {
+  items: Mine[];
+  moving: Moving | null;
+  onMove: (m: Moving) => void;
+  onCancel: (m: Moving) => void;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <section className="mt-2 rounded-lg border border-border bg-card p-3">
+      <h3 className="mb-2 text-sm font-semibold">Le tue prenotazioni ({items.length})</h3>
+      <ul className="flex flex-col divide-y divide-border">
+        {items.map((b) => {
+          const m: Moving = { id: b.id, start: new Date(b.start), end: new Date(b.end) };
+          const started = m.start.getTime() <= Date.now();
+          return (
+            <li
+              key={b.id}
+              className={`flex flex-wrap items-center justify-between gap-2 py-2 text-sm ${moving?.id === b.id ? "text-accent" : ""}`}
+            >
+              <span>
+                <span className="first-letter:uppercase">{longDate(romeDateString(m.start))}</span> ·{" "}
+                {romeTime(m.start)}–{romeTime(m.end)}
+              </span>
+              <span className="flex gap-1.5">
+                <Button size="sm" variant="outline" disabled={started} onClick={() => onMove(m)}>
+                  Sposta
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => onCancel(m)}>
+                  Annulla
+                </Button>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }

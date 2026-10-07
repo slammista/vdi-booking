@@ -264,8 +264,8 @@ export type YearTone = "none" | "partial" | "full" | "mine" | "lesson";
 
 const YEAR_TONE: Record<YearTone, string> = {
   none: "",
-  partial: "bg-accent/20",
-  full: "bg-muted-foreground/30 text-foreground",
+  partial: "bg-muted-foreground/20",
+  full: "bg-foreground/60 text-background",
   mine: "bg-accent text-accent-foreground",
   lesson: "bg-success text-success-foreground",
 };

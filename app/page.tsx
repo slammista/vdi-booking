@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { MonitorSmartphone, LogOut, Sun, Moon } from "lucide-react";
+import { LogOut, Sun, Moon } from "lucide-react";
+import { AppHeader } from "@/components/app-header";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { LoginForm } from "@/components/booking/login-form";
@@ -53,52 +54,53 @@ export default function BookingPage() {
 
   if (!me.authenticated) {
     return (
-      <main className="flex min-h-screen items-center justify-center p-6">
+      <>
+        <AppHeader title="Prenotazione VDI · AI Lab" />
+        <main className="flex min-h-[calc(100vh-4.5rem)] items-center justify-center p-6">
         <LoginForm
           onSuccess={(mustResetPassword) => {
             setMustReset(mustResetPassword);
             refreshMe();
           }}
         />
-      </main>
+        </main>
+      </>
     );
   }
 
   if (mustReset) {
     return (
-      <main className="flex min-h-screen items-center justify-center p-6">
-        <ChangePasswordForm onDone={() => setMustReset(false)} />
-      </main>
+      <>
+        <AppHeader title="Prenotazione VDI · AI Lab" />
+        <main className="flex min-h-[calc(100vh-4.5rem)] items-center justify-center p-6">
+          <ChangePasswordForm onDone={() => setMustReset(false)} />
+        </main>
+      </>
     );
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-6 p-6">
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <MonitorSmartphone className="h-6 w-6 text-accent" />
-          <div>
-            <h1 className="text-lg font-semibold leading-tight">Prenotazione VDI · AI Lab</h1>
-            <p className="text-sm text-muted-foreground">
-              Ciao {me.nome} {me.cognome}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            aria-label="Cambia tema"
-          >
-            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleLogout}>
-            <LogOut className="h-4 w-4" /> Esci
-          </Button>
-        </div>
-      </header>
-
+    <>
+      <AppHeader title="Prenotazione VDI · AI Lab" subtitle={`Ciao ${me.nome} ${me.cognome}`}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-white hover:bg-white/10"
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          aria-label="Cambia tema"
+        >
+          {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="border-white/30 text-white hover:bg-white/10"
+          onClick={handleLogout}
+        >
+          <LogOut className="h-4 w-4" /> Esci
+        </Button>
+      </AppHeader>
+      <main className="mx-auto flex max-w-5xl flex-col gap-6 p-6">
       <NextLessonBanner lessons={lessons} onOpen={() => setTab("lessons")} />
 
       <nav className="flex gap-1 border-b border-border">
@@ -120,6 +122,7 @@ export default function BookingPage() {
       </nav>
 
       <section>{tab === "vdi" ? <VdiCalendar /> : <LessonsPanel lessons={lessons} />}</section>
-    </main>
+      </main>
+    </>
   );
 }
