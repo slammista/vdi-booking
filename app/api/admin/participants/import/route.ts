@@ -3,6 +3,7 @@ import { pool, query } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-guard";
 import { parseParticipantsCsv } from "@/lib/csv";
 import { buildUsername, generateTemporaryPassword, hashPassword } from "@/lib/auth";
+import { encryptPassword } from "@/lib/vault";
 
 /**
  * POST /api/admin/participants/import
@@ -55,12 +56,19 @@ export async function POST(req: NextRequest) {
     for (const row of rows) {
       const existingId = existingBySourceId.get(row.sourceId);
       if (existingId) {
+        // I livelli si aggiornano solo se le colonne sono presenti nel CSV.
         await client.query(
           `UPDATE participants
            SET nome = $1, cognome = $2, tipo_utente = $3, idoneo_prenotazione = $4,
+               livello_atteso = CASE WHEN $6 THEN $7::smallint ELSE livello_atteso END,
+               livello_affrontato = CASE WHEN $8 THEN $9::smallint ELSE livello_affrontato END,
                is_active = true, updated_at = now()
            WHERE id = $5`,
-          [row.nome, row.cognome, row.tipoUtente, row.idoneo, existingId]
+          [
+            row.nome, row.cognome, row.tipoUtente, row.idoneo, existingId,
+            row.livelloAtteso !== undefined, row.livelloAtteso ?? null,
+            row.livelloAffrontato !== undefined, row.livelloAffrontato ?? 0,
+          ]
         );
         updatedIds.push(existingId);
       } else {
@@ -71,9 +79,14 @@ export async function POST(req: NextRequest) {
         await client.query(
           `INSERT INTO participants
              (source_id, nome, cognome, username, tipo_utente, idoneo_prenotazione,
-              password_hash, must_reset_password, is_active)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, true, true)`,
-          [row.sourceId, row.nome, row.cognome, username, row.tipoUtente, row.idoneo, passwordHash]
+              password_hash, password_enc, must_reset_password, is_active,
+              livello_atteso, livello_affrontato)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, true, $9, $10)`,
+          [
+            row.sourceId, row.nome, row.cognome, username, row.tipoUtente, row.idoneo,
+            passwordHash, encryptPassword(tempPassword),
+            row.livelloAtteso ?? null, row.livelloAffrontato ?? 0,
+          ]
         );
 
         created.push({ nome: row.nome, cognome: row.cognome, username, temporaryPassword: tempPassword });

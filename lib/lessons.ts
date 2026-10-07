@@ -2,6 +2,7 @@ import { z } from "zod";
 import { fromZonedTime } from "date-fns-tz";
 import type { PoolClient } from "pg";
 import { isBookableDay } from "./holidays";
+import { MAX_LEVEL } from "./levels";
 import {
   BOOKING_HORIZON_END,
   DAY_END_HOUR,
@@ -18,6 +19,7 @@ export class LessonError extends Error {
 
 export const lessonInputSchema = z.object({
   title: z.string().trim().min(1, "Titolo mancante.").max(120),
+  level: z.number().int().min(1).max(MAX_LEVEL),
   notes: z.string().trim().max(500).nullish(),
   date: z.string(),
   startTime: z.string().regex(/^\d{2}:\d{2}$/),
@@ -54,6 +56,22 @@ export async function saveLesson(client: PoolClient, id: number | null, input: L
     const valid = await client.query(`SELECT id FROM participants WHERE id = ANY($1::int[]) AND is_active`, [ids]);
     if (valid.rowCount !== ids.length) throw new LessonError(400, "Uno o più partecipanti non esistono o non sono attivi.");
 
+    // Chi ha gia' svolto questo livello (baseline o lezione conclusa a cui ha partecipato) non puo' ripeterlo.
+    const repeated = await client.query(
+      `SELECT p.nome, p.cognome FROM participants p
+       WHERE p.id = ANY($1::int[])
+         AND (p.livello_affrontato >= $2
+              OR EXISTS (SELECT 1 FROM lesson_participants lp JOIN lessons l ON l.id = lp.lesson_id
+                         WHERE lp.participant_id = p.id AND l.level = $2 AND lp.attended
+                           AND upper(l.slot) <= now() AND ($3::int IS NULL OR l.id <> $3)))
+       ORDER BY p.cognome, p.nome`,
+      [ids, input.level, id]
+    );
+    if (repeated.rowCount) {
+      const names = repeated.rows.map((r) => `${r.nome} ${r.cognome}`).join(", ");
+      throw new LessonError(409, `Livello ${input.level} già svolto da: ${names}.`);
+    }
+
     const clash = await client.query(
       `SELECT DISTINCT p.nome, p.cognome
        FROM lesson_participants lp
@@ -69,18 +87,21 @@ export async function saveLesson(client: PoolClient, id: number | null, input: L
     }
 
     let lessonId = id;
+    let absentIds: number[] = [];
     if (id === null) {
       const ins = await client.query(
-        `INSERT INTO lessons (title, notes, slot) VALUES ($1, $2, tstzrange($3, $4)) RETURNING id`,
-        [input.title, input.notes || null, start.toISOString(), end.toISOString()]
+        `INSERT INTO lessons (title, notes, slot, level) VALUES ($1, $2, tstzrange($3, $4), $5) RETURNING id`,
+        [input.title, input.notes || null, start.toISOString(), end.toISOString(), input.level]
       );
       lessonId = ins.rows[0].id;
     } else {
       const upd = await client.query(
-        `UPDATE lessons SET title = $1, notes = $2, slot = tstzrange($3, $4), updated_at = now() WHERE id = $5`,
-        [input.title, input.notes || null, start.toISOString(), end.toISOString(), id]
+        `UPDATE lessons SET title = $1, notes = $2, slot = tstzrange($3, $4), level = $6, updated_at = now() WHERE id = $5`,
+        [input.title, input.notes || null, start.toISOString(), end.toISOString(), id, input.level]
       );
       if (upd.rowCount === 0) throw new LessonError(404, "Lezione non trovata.");
+      const absent = await client.query(`SELECT participant_id FROM lesson_participants WHERE lesson_id = $1 AND NOT attended`, [id]);
+      absentIds = absent.rows.map((r) => r.participant_id);
       await client.query(`DELETE FROM lesson_participants WHERE lesson_id = $1`, [id]);
     }
 
@@ -88,6 +109,12 @@ export async function saveLesson(client: PoolClient, id: number | null, input: L
       `INSERT INTO lesson_participants (lesson_id, participant_id) SELECT $1, unnest($2::int[])`,
       [lessonId, ids]
     );
+    if (absentIds.length) {
+      await client.query(
+        `UPDATE lesson_participants SET attended = false WHERE lesson_id = $1 AND participant_id = ANY($2::int[])`,
+        [lessonId, absentIds]
+      );
+    }
     await client.query("COMMIT");
     return lessonId as number;
   } catch (e) {

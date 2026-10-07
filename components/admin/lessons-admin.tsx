@@ -9,6 +9,7 @@ import { Modal } from "@/components/ui/modal";
 import { CalendarToolbar } from "@/components/calendar/toolbar";
 import { MonthView, WeekView, YearView, type CalEvent, type YearTone } from "@/components/calendar/views";
 import { isBookableDay } from "@/lib/holidays";
+import { MAX_LEVEL, pickRecommended } from "@/lib/levels";
 import { BOOKING_HORIZON_END, DAY_END_HOUR, DAY_START_HOUR, romeDateString } from "@/lib/slots";
 import {
   addDays,
@@ -27,7 +28,21 @@ export type AdminParticipant = {
   cognome: string;
   username: string;
   is_active: boolean;
+  livello_atteso: number | null;
+  livello_affrontato: number;
+  done: number[];
+  scheduled: { level: number; lessonId: number }[];
 };
+
+/** Admin puo' consultare anche lezioni passate (storico). */
+const ADMIN_MIN_DATE = "2025-01-01";
+
+/** Livello consigliato per una persona, ignorando la lezione che si sta modificando. */
+function recommendedFor(p: AdminParticipant, editingLessonId: number | null): number | null {
+  const target = p.livello_atteso ?? p.livello_affrontato;
+  const others = p.scheduled.filter((s) => s.lessonId !== editingLessonId).map((s) => s.level);
+  return pickRecommended(target, p.done, others);
+}
 
 type Lesson = {
   id: number;
@@ -35,12 +50,14 @@ type Lesson = {
   notes: string | null;
   start: string;
   end: string;
-  participants: { id: number; nome: string; cognome: string }[];
+  level: number;
+  participants: { id: number; nome: string; cognome: string; attended?: boolean }[];
 };
 
 type Draft = {
   id: number | null;
   title: string;
+  level: number;
   notes: string;
   date: string;
   startTime: string;
@@ -54,7 +71,13 @@ const START_TIMES = Array.from({ length: (DAY_END_HOUR - DAY_START_HOUR) * 4 }, 
 
 const fmtDuration = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}`);
 
-export function LessonsAdmin({ participants }: { participants: AdminParticipant[] }) {
+export function LessonsAdmin({
+  participants,
+  onChanged,
+}: {
+  participants: AdminParticipant[];
+  onChanged?: () => void;
+}) {
   const today = todayRome();
   const [view, setView] = React.useState<CalView>("week");
   const [anchor, setAnchor] = React.useState(today);
@@ -97,6 +120,7 @@ export function LessonsAdmin({ participants }: { participants: AdminParticipant[
     setDraft({
       id: l.id,
       title: l.title,
+      level: l.level,
       notes: l.notes ?? "",
       date: romeDateString(s),
       startTime: romeTime(s),
@@ -106,7 +130,7 @@ export function LessonsAdmin({ participants }: { participants: AdminParticipant[
   };
 
   const openNew = (date: string, startTime = "09:00") =>
-    setDraft({ id: null, title: "", notes: "", date, startTime, durationMinutes: 60, participantIds: [] });
+    setDraft({ id: null, title: "", level: 1, notes: "", date, startTime, durationMinutes: 60, participantIds: [] });
 
   const firstBookable = () => {
     let d = clampStr(anchor, today, BOOKING_HORIZON_END);
@@ -122,7 +146,7 @@ export function LessonsAdmin({ participants }: { participants: AdminParticipant[
       dateStr: romeDateString(s),
       startMin: romeMinutes(s),
       endMin: romeMinutes(e) || 24 * 60,
-      title: l.title,
+      title: `L${l.level} · ${l.title}`,
       subtitle: `${romeTime(s)} – ${romeTime(e)} · ${l.participants.length} partecip.`,
       tone: "lesson",
       onClick: () => openEdit(l),
@@ -140,12 +164,12 @@ export function LessonsAdmin({ participants }: { participants: AdminParticipant[
         view={view}
         anchor={anchor}
         today={today}
-        minDate={today}
+        minDate={ADMIN_MIN_DATE}
         maxDate={BOOKING_HORIZON_END}
         loading={loading}
         onChange={(v, a) => {
           setView(v);
-          setAnchor(clampStr(a, today, BOOKING_HORIZON_END));
+          setAnchor(clampStr(a, ADMIN_MIN_DATE, BOOKING_HORIZON_END));
         }}
         right={
           <Button size="sm" onClick={() => openNew(firstBookable())}>
@@ -164,7 +188,7 @@ export function LessonsAdmin({ participants }: { participants: AdminParticipant[
         <WeekView
           anchor={anchor}
           today={today}
-          minDate={today}
+          minDate={ADMIN_MIN_DATE}
           maxDate={BOOKING_HORIZON_END}
           events={events}
           cellDisabled={() => false}
@@ -176,7 +200,7 @@ export function LessonsAdmin({ participants }: { participants: AdminParticipant[
         <MonthView
           anchor={anchor}
           today={today}
-          minDate={today}
+          minDate={ADMIN_MIN_DATE}
           maxDate={BOOKING_HORIZON_END}
           onDayClick={goWeek}
           renderDay={(d) => {
@@ -185,7 +209,7 @@ export function LessonsAdmin({ participants }: { participants: AdminParticipant[
               <div className="flex flex-col gap-0.5 text-[11px] leading-tight">
                 {ls.slice(0, 3).map((l) => (
                   <span key={l.id} className="truncate rounded bg-success/15 px-1 py-0.5">
-                    {romeTime(new Date(l.start))} {l.title}
+                    {romeTime(new Date(l.start))} L{l.level} {l.title}
                   </span>
                 ))}
                 {ls.length > 3 && <span className="text-muted-foreground">+{ls.length - 3} altre</span>}
@@ -199,12 +223,12 @@ export function LessonsAdmin({ participants }: { participants: AdminParticipant[
         <YearView
           anchor={anchor}
           today={today}
-          minDate={today}
+          minDate={ADMIN_MIN_DATE}
           maxDate={BOOKING_HORIZON_END}
           onDayClick={goWeek}
           onMonthClick={(m) => {
             setView("month");
-            setAnchor(clampStr(m, today, BOOKING_HORIZON_END));
+            setAnchor(clampStr(m, ADMIN_MIN_DATE, BOOKING_HORIZON_END));
           }}
           dayTone={(d): YearTone => ((byDay.get(d)?.length ?? 0) > 0 ? "lesson" : "none")}
         />
@@ -223,6 +247,7 @@ export function LessonsAdmin({ participants }: { participants: AdminParticipant[
           onSaved={() => {
             setDraft(null);
             setReloadKey((k) => k + 1);
+            onChanged?.();
           }}
         />
       )}
@@ -254,11 +279,46 @@ function LessonDialog({
   const durations = Array.from({ length: Math.floor(maxDuration / 15) }, (_, i) => (i + 1) * 15);
   const duration = Math.min(draft.durationMinutes, maxDuration);
 
+  const editingId = draft.id;
+  const [levelTouched, setLevelTouched] = React.useState(initial.id !== null);
   const active = participants.filter((p) => p.is_active);
   const shown = active.filter((p) =>
     `${p.nome} ${p.cognome} ${p.username}`.toLowerCase().includes(filter.trim().toLowerCase())
   );
   const selected = new Set(draft.participantIds);
+  // L'oscuramento parte dopo la prima selezione (o se il livello e' scelto a mano):
+  // prima, il livello automatico deve poter nascere dalla persona scelta.
+  const obscure = levelTouched || draft.participantIds.length > 0;
+  const completed = (p: AdminParticipant) => obscure && p.done.includes(draft.level);
+  const [dropped, setDropped] = React.useState<string[]>([]);
+
+  // Livello automatico: il piu' consigliato tra i selezionati (finche' non lo cambia a mano).
+  React.useEffect(() => {
+    if (levelTouched) return;
+    const recs = draft.participantIds
+      .map((id) => active.find((p) => p.id === id))
+      .filter((p): p is AdminParticipant => !!p)
+      .map((p) => recommendedFor(p, editingId))
+      .filter((l): l is number => l !== null);
+    if (recs.length === 0) return;
+    const counts = new Map<number, number>();
+    recs.forEach((l) => counts.set(l, (counts.get(l) ?? 0) + 1));
+    const best = Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0];
+    setDraft((d) => (d.level === best ? d : { ...d, level: best }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.participantIds, levelTouched]);
+
+  // Chi ha gia' svolto il livello scelto viene deselezionato (lezione "oscurata").
+  React.useEffect(() => {
+    const drop = draft.participantIds.filter((id) => {
+      const p = active.find((x) => x.id === id);
+      return p && p.done.includes(draft.level);
+    });
+    setDropped(drop.map((id) => active.find((x) => x.id === id)).filter(Boolean).map((p) => `${p!.nome} ${p!.cognome}`));
+    if (drop.length) setDraft((d) => ({ ...d, participantIds: d.participantIds.filter((id) => !drop.includes(id)) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.level]);
+
   const toggle = (id: number) =>
     set("participantIds", selected.has(id) ? draft.participantIds.filter((x) => x !== id) : [...draft.participantIds, id]);
 
@@ -275,6 +335,7 @@ function LessonDialog({
           date: draft.date,
           startTime: draft.startTime,
           durationMinutes: duration,
+          level: draft.level,
           participantIds: draft.participantIds,
         }),
       });
@@ -306,6 +367,35 @@ function LessonDialog({
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="l-title">Titolo</Label>
           <Input id="l-title" value={draft.title} maxLength={120} onChange={(e) => set("title", e.target.value)} />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="l-level">Livello della lezione</Label>
+          <select
+            id="l-level"
+            value={draft.level}
+            onChange={(e) => {
+              setLevelTouched(true);
+              set("level", Number(e.target.value));
+            }}
+            className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+          >
+            {Array.from({ length: MAX_LEVEL }, (_, i) => i + 1).map((l) => (
+              <option key={l} value={l}>
+                Livello {l}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">
+            {levelTouched
+              ? "Livello scelto a mano."
+              : "Impostato in automatico in base ai partecipanti selezionati (il più consigliato)."}
+          </p>
+          {dropped.length > 0 && (
+            <p className="text-xs font-medium text-accent">
+              Rimossi dalla selezione perché hanno già svolto il livello {draft.level}: {dropped.join(", ")}.
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -379,15 +469,37 @@ function LessonDialog({
             {shown.length === 0 ? (
               <p className="p-3 text-sm text-muted-foreground">Nessun partecipante trovato.</p>
             ) : (
-              shown.map((p) => (
-                <label key={p.id} className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted">
-                  <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggle(p.id)} />
-                  <span>
-                    {p.cognome} {p.nome}
-                  </span>
-                  <span className="font-mono text-xs text-muted-foreground">{p.username}</span>
-                </label>
-              ))
+              shown.map((p) => {
+                const done = completed(p);
+                const rec = recommendedFor(p, editingId);
+                const target = p.livello_atteso ?? p.livello_affrontato;
+                const already = p.scheduled.some((x) => x.level === draft.level && x.lessonId !== editingId);
+                const note = done
+                  ? `già svolto liv. ${draft.level}`
+                  : already
+                    ? `liv. ${draft.level} già programmato`
+                    : draft.level > target
+                      ? "oltre il livello atteso"
+                      : null;
+                return (
+                  <label
+                    key={p.id}
+                    className={`flex items-center gap-2 px-3 py-1.5 text-sm ${done ? "cursor-not-allowed opacity-45" : "cursor-pointer hover:bg-muted"}`}
+                  >
+                    <input type="checkbox" checked={selected.has(p.id)} disabled={done} onChange={() => toggle(p.id)} />
+                    <span className={done ? "line-through" : ""}>
+                      {p.cognome} {p.nome}
+                    </span>
+                    <span className="ml-auto flex flex-wrap items-center justify-end gap-x-2 text-xs text-muted-foreground">
+                      {note && <span className="font-medium text-accent">{note}</span>}
+                      <span>
+                        atteso {p.livello_atteso ?? "—"} · svolti {p.done.length ? p.done.join(",") : "nessuno"} ·
+                        consigliato {rec ?? "—"}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })
             )}
           </div>
         </div>

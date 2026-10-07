@@ -7,6 +7,8 @@ import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { LoginForm } from "@/components/booking/login-form";
 import { ChangePasswordForm } from "@/components/booking/change-password-form";
+import { LoginWiki } from "@/components/wiki/login-wiki";
+import { UserWiki } from "@/components/wiki/user-wiki";
 import { VdiCalendar } from "@/components/booking/vdi-calendar";
 import { LessonsPanel, NextLessonBanner, type MyLessons } from "@/components/booking/lessons-panel";
 import { cn } from "@/lib/utils";
@@ -16,7 +18,7 @@ type Me = { authenticated: boolean; nome?: string; cognome?: string };
 export default function BookingPage() {
   const [me, setMe] = React.useState<Me | null>(null);
   const [mustReset, setMustReset] = React.useState(false);
-  const [tab, setTab] = React.useState<"vdi" | "lessons">("vdi");
+  const [tab, setTab] = React.useState<"vdi" | "lessons" | "guide">("vdi");
   const [lessons, setLessons] = React.useState<MyLessons | null>(null);
   const { theme, setTheme } = useTheme();
 
@@ -56,13 +58,14 @@ export default function BookingPage() {
     return (
       <>
         <AppHeader title="Prenotazione VDI · AI Lab" />
-        <main className="flex min-h-[calc(100vh-4.5rem)] items-center justify-center p-6">
+        <main className="flex min-h-[calc(100vh-4.5rem)] flex-col items-center justify-center gap-6 p-6">
         <LoginForm
           onSuccess={(mustResetPassword) => {
             setMustReset(mustResetPassword);
             refreshMe();
           }}
         />
+        <LoginWiki />
         </main>
       </>
     );
@@ -107,6 +110,7 @@ export default function BookingPage() {
         {([
           ["vdi", "Prenota VDI"],
           ["lessons", "Le mie lezioni"],
+          ["guide", "Guida"],
         ] as const).map(([id, label]) => (
           <button
             key={id}
@@ -121,7 +125,11 @@ export default function BookingPage() {
         ))}
       </nav>
 
-      <section>{tab === "vdi" ? <VdiCalendar /> : <LessonsPanel lessons={lessons} />}</section>
+      <section>
+        {tab === "vdi" && <VdiCalendar />}
+        {tab === "lessons" && <LessonsPanel lessons={lessons} />}
+        {tab === "guide" && <UserWiki />}
+      </section>
       </main>
     </>
   );

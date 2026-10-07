@@ -3,6 +3,7 @@ import { z } from "zod";
 import { pool } from "@/lib/db";
 import { getCurrentSession } from "@/lib/session";
 import { hashPassword } from "@/lib/auth";
+import { encryptPassword } from "@/lib/vault";
 
 const schema = z.object({
   newPassword: z.string().min(8, "La password deve avere almeno 8 caratteri."),
@@ -19,8 +20,8 @@ export async function POST(req: NextRequest) {
 
   const hash = await hashPassword(parsed.data.newPassword);
   await pool.query(
-    `UPDATE participants SET password_hash = $1, must_reset_password = false, updated_at = now() WHERE id = $2`,
-    [hash, session.participantId]
+    `UPDATE participants SET password_hash = $1, password_enc = $3, must_reset_password = false, updated_at = now() WHERE id = $2`,
+    [hash, session.participantId, encryptPassword(parsed.data.newPassword)]
   );
 
   return NextResponse.json({ ok: true });

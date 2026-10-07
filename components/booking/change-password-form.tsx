@@ -5,6 +5,7 @@ import { KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { OWNERS } from "@/lib/config";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function ChangePasswordForm({ onDone }: { onDone: () => void }) {
@@ -76,6 +77,10 @@ export function ChangePasswordForm({ onDone }: { onDone: () => void }) {
               <KeyRound className="h-4 w-4" />
               {loading ? "Salvataggio..." : "Salva nuova password"}
             </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              Conserva questa password in un posto sicuro. Se la perdi, contatta uno degli owner ({OWNERS.join(", ")}) per
+              il ripristino.
+            </p>
           </form>
         </CardContent>
       </Card>

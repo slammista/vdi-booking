@@ -16,8 +16,8 @@ export async function GET(req: NextRequest) {
   }
 
   const lessons = await query(
-    `SELECT l.id, l.title, l.notes, lower(l.slot) AS start, upper(l.slot) AS "end",
-            COALESCE(json_agg(json_build_object('id', p.id, 'nome', p.nome, 'cognome', p.cognome)
+    `SELECT l.id, l.title, l.notes, l.level, lower(l.slot) AS start, upper(l.slot) AS "end",
+            COALESCE(json_agg(json_build_object('id', p.id, 'nome', p.nome, 'cognome', p.cognome, 'attended', lp.attended)
                               ORDER BY p.cognome, p.nome) FILTER (WHERE p.id IS NOT NULL), '[]') AS participants
      FROM lessons l
      LEFT JOIN lesson_participants lp ON lp.lesson_id = l.id

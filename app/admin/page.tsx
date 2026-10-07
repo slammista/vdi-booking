@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LessonsAdmin } from "@/components/admin/lessons-admin";
+import { HistoryDialog, PasswordCell } from "@/components/admin/participant-tools";
+import { AdminWiki } from "@/components/wiki/admin-wiki";
 import { cn } from "@/lib/utils";
 import { AppHeader } from "@/components/app-header";
 
@@ -19,6 +21,13 @@ type Participant = {
   idoneo_prenotazione: boolean;
   is_active: boolean;
   must_reset_password: boolean;
+  has_password: boolean;
+  livello_atteso: number | null;
+  livello_affrontato: number;
+  done: number[];
+  scheduled: { level: number; lessonId: number }[];
+  next: number | null;
+  recommended: number | null;
 };
 
 export default function AdminPage() {
@@ -26,7 +35,8 @@ export default function AdminPage() {
   const [importResult, setImportResult] = React.useState<any>(null);
   const [resetResult, setResetResult] = React.useState<{ name: string; password: string } | null>(null);
   const [busy, setBusy] = React.useState(false);
-  const [tab, setTab] = React.useState<"people" | "lessons">("people");
+  const [tab, setTab] = React.useState<"people" | "lessons" | "guide">("people");
+  const [historyFor, setHistoryFor] = React.useState<number | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const load = React.useCallback(async () => {
@@ -88,6 +98,7 @@ export default function AdminPage() {
         {([
           ["people", "Partecipanti"],
           ["lessons", "Lezioni"],
+          ["guide", "Guida"],
         ] as const).map(([id, label]) => (
           <button
             key={id}
@@ -102,7 +113,13 @@ export default function AdminPage() {
         ))}
       </nav>
 
-      {tab === "lessons" && <LessonsAdmin participants={participants ?? []} />}
+      {tab === "lessons" && <LessonsAdmin participants={participants ?? []} onChanged={load} />}
+
+      {tab === "guide" && <AdminWiki />}
+
+      {historyFor !== null && (
+        <HistoryDialog participantId={historyFor} onClose={() => setHistoryFor(null)} onChanged={load} />
+      )}
 
       {tab === "people" && (
         <>
@@ -178,7 +195,9 @@ export default function AdminPage() {
                     <th className="py-2 pr-3">Nome</th>
                     <th className="py-2 pr-3">Utente</th>
                     <th className="py-2 pr-3">Tipo</th>
+                    <th className="py-2 pr-3">Livelli</th>
                     <th className="py-2 pr-3">Stato</th>
+                    <th className="py-2 pr-3">Password</th>
                     <th className="py-2 pr-3"></th>
                   </tr>
                 </thead>
@@ -190,6 +209,15 @@ export default function AdminPage() {
                       </td>
                       <td className="py-2 pr-3 font-mono text-xs">{p.username}</td>
                       <td className="py-2 pr-3">{p.tipo_utente}</td>
+                      <td className="py-2 pr-3 text-xs">
+                        <div>
+                          atteso <strong>{p.livello_atteso ?? "—"}</strong> · svolti{" "}
+                          <strong>{p.done.length ? p.done.join(",") : "—"}</strong>
+                        </div>
+                        <div className="text-muted-foreground">
+                          prossimo {p.next ?? "—"} · consigliato {p.recommended ?? "—"}
+                        </div>
+                      </td>
                       <td className="py-2 pr-3 flex flex-wrap gap-1">
                         {!p.is_active && <Badge variant="muted">Non più attivo</Badge>}
                         {p.is_active && !p.idoneo_prenotazione && <Badge variant="destructive">Non idoneo</Badge>}
@@ -197,9 +225,17 @@ export default function AdminPage() {
                         {p.must_reset_password && <Badge variant="muted">Da reimpostare</Badge>}
                       </td>
                       <td className="py-2 pr-3">
-                        <Button variant="outline" size="sm" disabled={busy} onClick={() => handleReset(p)}>
-                          <KeyRound className="h-3.5 w-3.5" /> Reset password
-                        </Button>
+                        <PasswordCell participantId={p.id} available={p.has_password} />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <div className="flex flex-wrap gap-1.5">
+                          <Button variant="outline" size="sm" disabled={busy} onClick={() => handleReset(p)}>
+                            <KeyRound className="h-3.5 w-3.5" /> Reset password
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => setHistoryFor(p.id)}>
+                            Storico
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}

@@ -6,6 +6,7 @@ import { LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { OWNERS } from "@/lib/config";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function LoginForm({ onSuccess }: { onSuccess: (mustResetPassword: boolean) => void }) {
@@ -46,7 +47,7 @@ export function LoginForm({ onSuccess }: { onSuccess: (mustResetPassword: boolea
         <CardHeader>
           <CardTitle>AI Lab · Prenotazione VDI</CardTitle>
           <CardDescription>
-            Accedi con il nome utente e la password personale ricevuti dall&apos;amministratore.
+            Accedi con il nome utente (nome.cognome) e la password ricevuta dagli owner dell&apos;app.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -79,8 +80,8 @@ export function LoginForm({ onSuccess }: { onSuccess: (mustResetPassword: boolea
               {loading ? "Accesso in corso..." : "Accedi"}
             </Button>
             <p className="text-center text-xs text-muted-foreground">
-              Password dimenticata? Contatta l&apos;amministratore del gruppo AI Lab: potrà
-              reimpostarla in pochi secondi dal pannello amministrativo.
+              Password dimenticata? Contatta uno degli owner ({OWNERS.join(", ")}): potrà
+              reimpostarla dal pannello amministrativo.
             </p>
           </form>
         </CardContent>

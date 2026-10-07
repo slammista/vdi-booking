@@ -6,9 +6,20 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { longDate, romeTime } from "@/lib/calendar";
 import { romeDateString } from "@/lib/slots";
+import { cn } from "@/lib/utils";
+import type { Progress } from "@/lib/levels";
 
-export type MyLesson = { id: number; title: string; notes: string | null; start: string; end: string; participants: number };
-export type MyLessons = { next: MyLesson | null; upcoming: MyLesson[]; past: MyLesson[] };
+export type MyLesson = {
+  id: number;
+  title: string;
+  notes: string | null;
+  level: number;
+  attended: boolean;
+  start: string;
+  end: string;
+  participants: number;
+};
+export type MyLessons = { next: MyLesson | null; upcoming: MyLesson[]; past: MyLesson[]; progress: Progress };
 
 function when(l: MyLesson) {
   const s = new Date(l.start);
@@ -43,7 +54,9 @@ export function NextLessonBanner({ lessons, onOpen }: { lessons: MyLessons | nul
       <CalendarClock className="h-6 w-6 shrink-0 text-success" />
       <div className="min-w-0 flex-1">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Prossima lezione · {relative(l)}</p>
-        <p className="truncate font-semibold">{l.title}</p>
+        <p className="truncate font-semibold">
+          {l.title} <span className="font-normal text-muted-foreground">· Livello {l.level}</span>
+        </p>
         <p className="text-sm first-letter:uppercase">
           {w.day} · {w.time}
         </p>
@@ -57,7 +70,10 @@ function LessonRow({ l, muted }: { l: MyLesson; muted?: boolean }) {
   return (
     <li className={`flex flex-col gap-0.5 rounded-md border border-border px-3 py-2 ${muted ? "opacity-70" : ""}`}>
       <div className="flex items-center justify-between gap-2">
-        <span className="font-medium">{l.title}</span>
+        <span className="font-medium">
+          {l.title} <span className="font-normal text-muted-foreground">· Livello {l.level}</span>
+        </span>
+        {!l.attended && <Badge variant="destructive">Assente</Badge>}
         {l.participants > 1 && (
           <Badge variant="muted" className="gap-1">
             <Users className="h-3 w-3" /> {l.participants}
@@ -72,10 +88,60 @@ function LessonRow({ l, muted }: { l: MyLesson; muted?: boolean }) {
   );
 }
 
+const STEP_STYLE: Record<string, string> = {
+  done: "border-foreground bg-foreground text-background",
+  scheduled: "border-accent bg-accent/10 text-accent",
+  next: "border-accent bg-accent text-accent-foreground",
+  todo: "border-border bg-card text-muted-foreground",
+};
+const STEP_LABEL: Record<string, string> = {
+  done: "Svolto",
+  scheduled: "Programmato",
+  next: "Prossimo step",
+  todo: "Da fare",
+};
+
+function ProgressCard({ progress }: { progress: Progress }) {
+  const { steps, next, atteso } = progress;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Il tuo percorso</CardTitle>
+        <CardDescription>
+          {atteso ? `Livello atteso: ${atteso}. ` : ""}
+          {steps.length === 0
+            ? "Il percorso non è ancora stato impostato: contatta gli amministratori."
+            : next
+              ? `Prossimo step: livello ${next}.`
+              : "Hai completato tutti i livelli previsti."}
+        </CardDescription>
+      </CardHeader>
+      {steps.length > 0 && (
+        <CardContent>
+          <ol className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            {steps.map((st) => (
+              <li key={st.level} className={cn("flex flex-col gap-0.5 rounded-md border px-3 py-2", STEP_STYLE[st.status])}>
+                <span className="text-xs uppercase tracking-wide opacity-80">Livello {st.level}</span>
+                <span className="text-sm font-semibold">{STEP_LABEL[st.status]}</span>
+                {st.date && (
+                  <span className="text-xs opacity-90">
+                    {new Intl.DateTimeFormat("it-IT", { day: "2-digit", month: "short", year: "numeric", timeZone: "Europe/Rome" }).format(new Date(st.date))}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ol>
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
 export function LessonsPanel({ lessons }: { lessons: MyLessons | null }) {
   if (!lessons) return <p className="text-sm text-muted-foreground">Caricamento…</p>;
   return (
     <div className="flex flex-col gap-4">
+      <ProgressCard progress={lessons.progress} />
       <Card>
         <CardHeader>
           <CardTitle>Prossime lezioni</CardTitle>

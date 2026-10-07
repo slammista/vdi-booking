@@ -102,3 +102,18 @@ CREATE INDEX IF NOT EXISTS idx_lesson_participants_participant ON lesson_partici
 
 ALTER TABLE lessons ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lesson_participants ENABLE ROW LEVEL SECURITY;
+
+-- ---------------------------------------------------------------------------
+-- Livelli, presenze e copia cifrata della password (consultabile dagli admin).
+-- Gli stessi ALTER sono gia' stati applicati al database di produzione.
+-- ---------------------------------------------------------------------------
+ALTER TABLE participants
+    ADD COLUMN IF NOT EXISTS livello_atteso SMALLINT CHECK (livello_atteso BETWEEN 1 AND 9),
+    ADD COLUMN IF NOT EXISTS livello_affrontato SMALLINT NOT NULL DEFAULT 0 CHECK (livello_affrontato BETWEEN 0 AND 9),
+    ADD COLUMN IF NOT EXISTS password_enc TEXT;
+
+ALTER TABLE lessons
+    ADD COLUMN IF NOT EXISTS level SMALLINT NOT NULL DEFAULT 1 CHECK (level BETWEEN 1 AND 9);
+
+ALTER TABLE lesson_participants
+    ADD COLUMN IF NOT EXISTS attended BOOLEAN NOT NULL DEFAULT TRUE;
