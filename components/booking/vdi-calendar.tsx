@@ -2,11 +2,14 @@
 
 import * as React from "react";
 import { Button } from "@/components/ui/button";
-import { Modal } from "@/components/ui/modal";
+import { Plus } from "lucide-react";
+import { BookingDialog, type EditingBooking } from "@/components/booking/booking-dialog";
 import { CalendarToolbar } from "@/components/calendar/toolbar";
 import { MonthView, WeekView, YearView, type CalEvent, type YearTone } from "@/components/calendar/views";
+import { isBookableDay } from "@/lib/holidays";
 import { BOOKING_HORIZON_END, generateDaySlots, romeDateString } from "@/lib/slots";
 import {
+  addDays,
   clampStr,
   longDate,
   periodRange,
@@ -18,12 +21,7 @@ import {
 
 type Booking = { id: number; start: string; end: string; mine: boolean };
 type Mine = { id: number; start: string; end: string };
-type Moving = { id: number; start: Date; end: Date };
-type Pending =
-  | { kind: "book"; start: Date; end: Date }
-  | { kind: "manage"; start: Date; end: Date; bookingId: number }
-  | { kind: "cancel"; start: Date; end: Date; bookingId: number }
-  | { kind: "move"; start: Date; end: Date; from: Moving };
+type Editor = { booking: EditingBooking; date: string; start?: number };
 
 export function VdiCalendar() {
   const today = todayRome();
@@ -33,10 +31,7 @@ export function VdiCalendar() {
   const [loading, setLoading] = React.useState(false);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [reloadKey, setReloadKey] = React.useState(0);
-  const [pending, setPending] = React.useState<Pending | null>(null);
-  const [busy, setBusy] = React.useState(false);
-  const [actionError, setActionError] = React.useState<string | null>(null);
-  const [moving, setMoving] = React.useState<Moving | null>(null);
+  const [editor, setEditor] = React.useState<Editor | null>(null);
   const [mine, setMine] = React.useState<Mine[]>([]);
 
   const range = React.useMemo(() => periodRange(view, anchor), [view, anchor]);
@@ -88,7 +83,7 @@ export function VdiCalendar() {
   const events: CalEvent[] = bookings.map((b) => {
     const start = new Date(b.start);
     const end = new Date(b.end);
-    const cancellable = b.mine && start.getTime() > now;
+    const editable = b.mine && end.getTime() > now;
     return {
       id: `b${b.id}`,
       dateStr: romeDateString(start),
@@ -97,15 +92,11 @@ export function VdiCalendar() {
       title: b.mine ? "Tua prenotazione" : "Occupato",
       subtitle: `${romeTime(start)} – ${romeTime(end)}`,
       tone: b.mine ? "mine" : "taken",
-      onClick:
-        cancellable && !moving ? () => openPending({ kind: "manage", start, end, bookingId: b.id }) : undefined,
+      onClick: editable
+        ? () => setEditor({ booking: { id: b.id, start: b.start, end: b.end }, date: romeDateString(start) })
+        : undefined,
     };
   });
-
-  function openPending(p: Pending) {
-    setActionError(null);
-    setPending(p);
-  }
 
   function cellDisabled(d: string, hour: number) {
     const slot = generateDaySlots(d)[hour - 9];
@@ -115,122 +106,19 @@ export function VdiCalendar() {
 
   function onCellClick(d: string, hour: number) {
     const slot = generateDaySlots(d)[hour - 9];
-    if (!slot) return;
-    openPending(
-      moving
-        ? { kind: "move", start: slot.start, end: slot.end, from: moving }
-        : { kind: "book", start: slot.start, end: slot.end }
-    );
+    if (slot) setEditor({ booking: null, date: d, start: slot.start.getTime() });
   }
 
-  async function confirm() {
-    if (!pending) return;
-    setBusy(true);
-    setActionError(null);
-    try {
-      if (pending.kind === "manage") return;
-      const body = JSON.stringify({ start: pending.start.toISOString(), end: pending.end.toISOString() });
-      const json = { "Content-Type": "application/json" };
-      const res =
-        pending.kind === "book"
-          ? await fetch("/api/bookings", { method: "POST", headers: json, body })
-          : pending.kind === "move"
-            ? await fetch(`/api/bookings/${pending.from.id}`, { method: "PATCH", headers: json, body })
-            : await fetch(`/api/bookings/${pending.bookingId}`, { method: "DELETE" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setActionError(data.error ?? "Operazione non riuscita.");
-        setReloadKey((k) => k + 1); // ri-sincronizza: un altro utente potrebbe aver preso lo slot
-        return;
-      }
-      setPending(null);
-      if (pending.kind === "move") setMoving(null);
-      setReloadKey((k) => k + 1);
-    } finally {
-      setBusy(false);
-    }
+  function newBooking() {
+    let d = clampStr(anchor, today, BOOKING_HORIZON_END);
+    for (let i = 0; i < 10 && !isBookableDay(d); i++) d = addDays(d, 1);
+    setEditor({ booking: null, date: d });
   }
 
   const goWeek = (d: string) => {
     setView("week");
     setAnchor(d);
   };
-
-  function PendingModal() {
-    if (!pending) return null;
-    const day = <strong className="first-letter:uppercase">{longDate(romeDateString(pending.start))}</strong>;
-    const time = (
-      <>
-        dalle <strong>{romeTime(pending.start)}</strong> alle <strong>{romeTime(pending.end)}</strong>
-      </>
-    );
-    const errorBox = actionError && (
-      <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-        {actionError}
-      </div>
-    );
-
-    if (pending.kind === "manage") {
-      const { start, end, bookingId } = pending;
-      return (
-        <Modal title="La tua prenotazione" onClose={() => setPending(null)}>
-          <div className="flex flex-col gap-4">
-            <p className="text-sm">
-              VDI prenotata per {day} {time}.
-            </p>
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button variant="outline" onClick={() => setPending(null)}>
-                Chiudi
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setMoving({ id: bookingId, start, end });
-                  setPending(null);
-                }}
-              >
-                Sposta
-              </Button>
-              <Button variant="destructive" onClick={() => setPending({ kind: "cancel", start, end, bookingId })}>
-                Annulla prenotazione
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      );
-    }
-
-    const title =
-      pending.kind === "book" ? "Conferma prenotazione" : pending.kind === "move" ? "Conferma spostamento" : "Annulla prenotazione";
-    return (
-      <Modal title={title} onClose={() => !busy && setPending(null)}>
-        <div className="flex flex-col gap-4">
-          <p className="text-sm">
-            {pending.kind === "book" && <>Vuoi prenotare la VDI per {day} {time}?</>}
-            {pending.kind === "cancel" && <>Vuoi annullare la tua prenotazione per {day} {time}?</>}
-            {pending.kind === "move" && (
-              <>
-                Vuoi spostare la prenotazione di{" "}
-                <strong>
-                  {longDate(romeDateString(pending.from.start))} {romeTime(pending.from.start)}–{romeTime(pending.from.end)}
-                </strong>{" "}
-                a {day} {time}?
-              </>
-            )}
-          </p>
-          {errorBox}
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setPending(null)} disabled={busy}>
-              Indietro
-            </Button>
-            <Button onClick={confirm} disabled={busy} variant={pending.kind === "cancel" ? "destructive" : "default"}>
-              {pending.kind === "book" ? "Prenota" : pending.kind === "move" ? "Sposta" : "Annulla prenotazione"}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-    );
-  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -245,19 +133,12 @@ export function VdiCalendar() {
           setView(v);
           setAnchor(clampStr(a, today, BOOKING_HORIZON_END));
         }}
-      />
-
-      {moving && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-sm">
-          <span>
-            Stai spostando la prenotazione di <strong>{longDate(romeDateString(moving.start))}</strong>{" "}
-            {romeTime(moving.start)}–{romeTime(moving.end)}. Clicca un nuovo slot libero.
-          </span>
-          <Button size="sm" variant="outline" onClick={() => setMoving(null)}>
-            Annulla spostamento
+        right={
+          <Button size="sm" onClick={newBooking}>
+            <Plus className="h-4 w-4" /> Nuova prenotazione
           </Button>
-        </div>
-      )}
+        }
+      />
 
       {loadError && (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -329,17 +210,22 @@ export function VdiCalendar() {
 
       <Legend view={view} />
 
-      {PendingModal()}
+      {editor && (
+        <BookingDialog
+          booking={editor.booking}
+          initialDate={editor.date}
+          initialStart={editor.start}
+          onClose={() => setEditor(null)}
+          onDone={() => {
+            setEditor(null);
+            setReloadKey((k) => k + 1);
+          }}
+        />
+      )}
 
       <MyBookings
         items={mine}
-        moving={moving}
-        onMove={(m) => {
-          setMoving(m);
-          setView("week");
-          setAnchor(clampStr(romeDateString(m.start), today, BOOKING_HORIZON_END));
-        }}
-        onCancel={(m) => openPending({ kind: "cancel", start: m.start, end: m.end, bookingId: m.id })}
+        onEdit={(b) => setEditor({ booking: b, date: romeDateString(new Date(b.start)) })}
       />
     </div>
   );
@@ -370,42 +256,23 @@ function Legend({ view }: { view: CalView }) {
   );
 }
 
-function MyBookings({
-  items,
-  moving,
-  onMove,
-  onCancel,
-}: {
-  items: Mine[];
-  moving: Moving | null;
-  onMove: (m: Moving) => void;
-  onCancel: (m: Moving) => void;
-}) {
+function MyBookings({ items, onEdit }: { items: Mine[]; onEdit: (b: Mine) => void }) {
   if (items.length === 0) return null;
   return (
     <section className="mt-2 rounded-lg border border-border bg-card p-3">
       <h3 className="mb-2 text-sm font-semibold">Le tue prenotazioni ({items.length})</h3>
       <ul className="flex flex-col divide-y divide-border">
         {items.map((b) => {
-          const m: Moving = { id: b.id, start: new Date(b.start), end: new Date(b.end) };
-          const started = m.start.getTime() <= Date.now();
+          const start = new Date(b.start);
           return (
-            <li
-              key={b.id}
-              className={`flex flex-wrap items-center justify-between gap-2 py-2 text-sm ${moving?.id === b.id ? "text-accent" : ""}`}
-            >
+            <li key={b.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
               <span>
-                <span className="first-letter:uppercase">{longDate(romeDateString(m.start))}</span> ·{" "}
-                {romeTime(m.start)}–{romeTime(m.end)}
+                <span className="first-letter:uppercase">{longDate(romeDateString(start))}</span> · {romeTime(start)}–
+                {romeTime(new Date(b.end))}
               </span>
-              <span className="flex gap-1.5">
-                <Button size="sm" variant="outline" disabled={started} onClick={() => onMove(m)}>
-                  Sposta
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => onCancel(m)}>
-                  Annulla
-                </Button>
-              </span>
+              <Button size="sm" variant="outline" onClick={() => onEdit(b)}>
+                Modifica o annulla
+              </Button>
             </li>
           );
         })}
