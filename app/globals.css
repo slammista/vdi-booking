@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Palette "Graphite + Ember" — deliberatamente diversa dal grigio/zinc di
+  default di shadcn e dal classico gradiente blu-viola da "AI generica".
+  Accento ambra/corallo caldo, sfondo antracite in dark mode.
+*/
+@layer base {
+  :root {
+    --background: 30 20% 98%;
+    --foreground: 20 15% 12%;
+    --card: 30 25% 100%;
+    --card-foreground: 20 15% 12%;
+    --muted: 30 15% 94%;
+    --muted-foreground: 20 8% 42%;
+    --border: 30 15% 88%;
+    --accent: 14 85% 50%;
+    --accent-foreground: 30 25% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --success: 152 55% 38%;
+    --success-foreground: 0 0% 98%;
+    --radius: 0.65rem;
+  }
+
+  .dark {
+    --background: 20 18% 8%;
+    --foreground: 30 15% 92%;
+    --card: 20 16% 11%;
+    --card-foreground: 30 15% 92%;
+    --muted: 20 12% 16%;
+    --muted-foreground: 30 8% 62%;
+    --border: 20 12% 20%;
+    --accent: 14 90% 58%;
+    --accent-foreground: 20 20% 10%;
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 98%;
+    --success: 152 45% 48%;
+    --success-foreground: 20 20% 10%;
+  }
+
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "cv11", "ss01";
+  }
+}
+
+/* Griglia slot: leggero effetto di comparsa, usato con parsimonia (solo
+   sulla selezione dello slot e sulla conferma), non su tutta la UI. */
+.slot-enter {
+  animation: slot-pop 0.18s ease-out;
+}
